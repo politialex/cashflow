@@ -3,194 +3,118 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#1e201d">
+  <meta name="theme-color" content="#171816">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=2.1.1">
+  <link rel="stylesheet" href="./public/styles.css?v=3.0.0">
   <script src="./public/app.js" type="module"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main-content">Vai al contenuto</a>
+  <a class="skip-link" href="#board-viewport">Vai alla board</a>
   <header class="site-header">
-    <a class="brand" href="#main-content">
+    <a class="brand" href="#board-viewport" aria-label="Cashflow Studio">
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span>Cashflow <span class="brand-subtitle">Studio</span></span>
+      <span>Cashflow <span>Studio</span></span>
     </a>
-    <h1 id="board-heading">Mappa dei flussi</h1>
-    <div class="panel-toggles" aria-label="Pannelli">
+    <div class="document-title"><strong>Il mio sistema finanziario</strong><span>Salvato nel browser</span></div>
+    <div class="header-actions">
+      <button id="fit-view" type="button">Adatta</button>
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
       <button id="toggle-inspector" type="button" aria-controls="inspector" aria-expanded="false">Dettagli</button>
     </div>
   </header>
 
-  <main id="main-content" tabindex="-1">
-    <section class="workspace" aria-labelledby="board-heading">
+  <main>
+    <section class="workspace" aria-label="Mappa dei flussi finanziari">
       <aside id="nodes-panel" class="nodes-panel" aria-labelledby="nodes-heading">
-        <h2 id="nodes-heading">Nodi</h2>
-        <p id="node-list-empty" class="muted">Aggiungi un nodo per iniziare.</p>
-        <div id="node-list" class="node-list" role="group" aria-labelledby="nodes-heading"></div>
-        <div class="transfer-section">
-          <h3 id="transfer-heading">Ordine dei trasferimenti</h3>
-          <div id="transfer-list" class="transfer-list" role="group" aria-labelledby="transfer-heading"></div>
+        <div class="panel-heading">
+          <div><span class="eyebrow">Mappa</span><h1 id="nodes-heading">Elementi</h1></div>
+          <button id="panel-add-node" class="icon-button" type="button" aria-label="Aggiungi nodo">+</button>
         </div>
-        <p class="storage-note">La mappa è salvata in questo browser.</p>
+        <p id="node-list-empty" class="empty-copy">Aggiungi conti, entrate e spese. Compariranno qui.</p>
+        <div id="node-list" class="node-list" role="list"></div>
+        <div class="panel-tip"><strong>Connessioni rapide</strong><p>Trascina un punto sul bordo di un nodo fino al nodo di destinazione.</p></div>
       </aside>
 
       <div class="board-surface">
-        <div id="board-viewport" class="board-viewport" role="region" aria-label="Mappa dei flussi scorrevole" tabindex="0">
+        <div id="board-viewport" class="board-viewport" role="application" aria-label="Canvas finanziario. Trascina per muoverti, usa la rotellina per lo zoom." tabindex="0">
           <div id="board-canvas" class="board-canvas">
-            <svg id="board-edges" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"></svg>
-            <div id="board-nodes" role="group" aria-label="Nodi della mappa"></div>
+            <svg id="board-edges" aria-label="Collegamenti" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div id="board-nodes" role="group" aria-label="Nodi"></div>
           </div>
-          <div id="board-empty" class="board-empty">
-            <strong>La mappa è vuota</strong>
-            <p>Aggiungi un nodo o carica l’esempio per iniziare.</p>
-          </div>
+          <div id="board-empty" class="board-empty"><span aria-hidden="true">＋</span><strong>Costruisci il tuo flusso</strong><p>Doppio click qui oppure usa il pulsante in basso.</p></div>
         </div>
-        <p id="board-status" role="status"></p>
+        <p id="board-status" role="status" aria-live="polite"></p>
+        <div class="zoom-controls" aria-label="Zoom">
+          <button id="zoom-out" type="button" aria-label="Riduci zoom">−</button><output id="zoom-level">100%</output><button id="zoom-in" type="button" aria-label="Aumenta zoom">+</button>
+        </div>
         <div class="board-tools">
-          <div class="board-caption">
-            <span>Importi proiettati al mese 1</span>
-            <span class="keyboard-help">Sposta i nodi con i tasti freccia</span>
-          </div>
-          <div class="toolbar" aria-label="Azioni della mappa">
-            <button id="add-node" class="primary-button" type="button"><span aria-hidden="true">+</span> Nodo</button>
-            <button id="add-transfer" type="button">Trasferimento</button>
-            <button id="load-example" type="button" aria-label="Carica esempio">Esempio</button>
-            <button id="open-simulation" type="button" aria-haspopup="dialog" aria-controls="simulation">Simula</button>
-          </div>
+          <button id="add-node" class="primary-button" type="button">Aggiungi</button>
+          <button id="add-transfer" type="button">Collega</button>
+          <button id="load-example" type="button">Esempio</button>
+          <span class="tool-divider" aria-hidden="true"></span>
+          <button id="open-simulation" type="button" aria-haspopup="dialog" aria-controls="simulation">Simula</button>
         </div>
       </div>
 
       <aside id="inspector" class="inspector" aria-labelledby="inspector-heading">
-        <h2 id="inspector-heading">Dettagli</h2>
-        <p id="inspector-empty" class="muted">Seleziona un nodo o un trasferimento per modificarlo.</p>
-
+        <div class="panel-heading"><div><span class="eyebrow">Selezione</span><h2 id="inspector-heading">Dettagli</h2></div></div>
+        <p id="inspector-empty" class="empty-copy">Seleziona un elemento o una freccia. Con il doppio click puoi modificare i dati direttamente sulla board.</p>
         <form id="node-form" class="editor" hidden>
-          <div class="field">
-            <label for="node-name">Nome</label>
-            <input id="node-name" name="name" type="text" maxlength="60" required>
-          </div>
-          <div class="field">
-            <label for="node-type">Tipo</label>
-            <select id="node-type" name="type" required>
-              <option value="bank">Conto bancario</option>
-              <option value="deposit">Deposito</option>
-              <option value="investment">Investimento</option>
-              <option value="savings">Risparmio</option>
-              <option value="cash">Contanti</option>
-              <option value="source">Fonte di entrate</option>
-              <option value="expense">Spesa</option>
-              <option value="other">Altro</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="node-opening">Saldo iniziale (€)</label>
-            <input id="node-opening" name="opening" type="text" inputmode="decimal" required>
-          </div>
-          <div class="field">
-            <label for="node-monthly-in">Entrate esterne mensili (€)</label>
-            <input id="node-monthly-in" name="monthlyIn" type="text" inputmode="decimal" required>
-          </div>
-          <div class="field">
-            <label for="node-monthly-out">Uscite esterne mensili (€)</label>
-            <input id="node-monthly-out" name="monthlyOut" type="text" inputmode="decimal" required>
-          </div>
-          <div class="field">
-            <label for="node-rate">Rendimento annuo (%)</label>
-            <input id="node-rate" name="annualRate" type="text" inputmode="decimal" required>
-          </div>
-          <section class="summary" aria-labelledby="node-summary-heading">
-            <h3 id="node-summary-heading">Disponibilità e flussi al mese 1</h3>
-            <div id="node-summary" class="form-summary"></div>
-          </section>
-          <div class="editor-actions">
-            <button class="primary-button" type="submit">Salva nodo</button>
-            <button id="delete-node" class="danger-button" type="button">Elimina nodo</button>
-          </div>
+          <div class="field"><label for="node-name">Nome</label><input id="node-name" name="name" type="text" maxlength="60" required></div>
+          <div class="field"><label for="node-type">Tipo</label><select id="node-type" name="type" required>
+            <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
+          </select></div>
+          <div class="field account-only"><label for="node-opening">Saldo iniziale</label><div class="input-affix"><span>€</span><input id="node-opening" name="opening" type="text" inputmode="decimal" required></div></div>
+          <div class="field"><label for="node-flow">Flusso mensile</label><div class="input-affix"><span>€</span><input id="node-flow" name="flow" type="text" inputmode="decimal" aria-describedby="flow-help" required></div><p id="flow-help" class="field-help">Usa + per un’entrata e − per un’uscita.</p></div>
+          <div class="field account-only"><label for="node-rate">Rendimento annuo</label><div class="input-affix suffix"><input id="node-rate" name="annualRate" type="text" inputmode="decimal" required><span>%</span></div></div>
+          <section class="summary" aria-labelledby="node-summary-heading"><h3 id="node-summary-heading">Mese 1</h3><div id="node-summary" class="form-summary"></div></section>
+          <div class="editor-actions"><button class="primary-button" type="submit">Salva</button><button id="delete-node" class="danger-button" type="button">Elimina</button></div>
         </form>
-
         <form id="transfer-form" class="editor" hidden>
-          <div class="field">
-            <label for="transfer-from">Da</label>
-            <select id="transfer-from" name="from" required></select>
-          </div>
-          <div class="field">
-            <label for="transfer-to">A</label>
-            <select id="transfer-to" name="to" required></select>
-          </div>
-          <div class="field">
-            <label for="transfer-mode">Modalità</label>
-            <select id="transfer-mode" name="mode" aria-describedby="percent-help" required>
-              <option value="fixed">Importo fisso (€)</option>
-              <option value="percent">Percentuale (%)</option>
-            </select>
-            <p id="percent-help" class="field-help">La percentuale si applica agli accrediti già ricevuti nel mese dal nodo di partenza, seguendo l’ordine dei trasferimenti.</p>
-          </div>
-          <div class="field">
-            <label for="transfer-value">Valore</label>
-            <input id="transfer-value" name="value" type="text" inputmode="decimal" required>
-          </div>
-          <div class="field">
-            <label for="transfer-frequency">Frequenza</label>
-            <select id="transfer-frequency" name="frequency" required>
-              <option value="monthly">Mensile</option>
-              <option value="annual">Annuale</option>
-              <option value="once">Una volta</option>
-            </select>
-          </div>
-          <div class="editor-actions">
-            <button class="primary-button" type="submit">Salva trasferimento</button>
-            <button id="delete-transfer" class="danger-button" type="button">Elimina</button>
-            <button id="transfer-up" type="button">Sposta su</button>
-            <button id="transfer-down" type="button">Sposta giù</button>
-          </div>
+          <div class="connection-summary"><span id="transfer-from-label"></span><span aria-hidden="true">→</span><span id="transfer-to-label"></span></div>
+          <input id="transfer-from" name="from" type="hidden"><input id="transfer-to" name="to" type="hidden">
+          <div class="field"><label for="transfer-mode">Movimento</label><select id="transfer-mode" name="mode" required><option value="fixed">Importo fisso</option><option value="percent">Percentuale delle entrate</option></select></div>
+          <div class="field"><label for="transfer-value">Valore</label><input id="transfer-value" name="value" type="text" inputmode="decimal" required></div>
+          <div class="field"><label for="transfer-frequency">Frequenza</label><select id="transfer-frequency" name="frequency" required><option value="monthly">Ogni mese</option><option value="annual">Ogni anno</option><option value="once">Una volta</option></select></div>
+          <div class="editor-actions"><button class="primary-button" type="submit">Salva</button><button id="delete-transfer" class="danger-button" type="button">Elimina</button></div>
         </form>
       </aside>
     </section>
   </main>
 
-  <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">
-    <div class="section-heading dialog-heading">
-      <div>
-        <h2 id="simulation-heading">Simulazione</h2>
-        <p>Stima come cambiano i saldi dei nodi nel tempo.</p>
+  <div id="quick-editor" popover="manual" aria-labelledby="quick-title">
+    <form id="quick-form">
+      <div class="quick-heading"><strong id="quick-title">Modifica</strong><button id="close-quick-editor" type="button" aria-label="Chiudi">×</button></div>
+      <div id="quick-node-fields">
+        <label for="quick-name">Nome</label><input id="quick-name" name="name" maxlength="60">
+        <label for="quick-flow">Flusso mensile</label><input id="quick-flow" name="flow" inputmode="decimal"><small>+ entrata · − uscita</small>
+        <div class="quick-account-field"><label for="quick-opening">Disponibilità iniziale</label><input id="quick-opening" name="opening" inputmode="decimal"></div>
+        <div class="quick-account-field"><label for="quick-rate">Rendimento annuo %</label><input id="quick-rate" name="annualRate" inputmode="decimal"></div>
       </div>
-      <button id="close-simulation" type="button">Chiudi</button>
-    </div>
-    <div class="section-heading">
-      <form id="simulation-form" class="simulation-form">
-        <div class="field">
-          <label for="projection-length">Orizzonte in mesi</label>
-          <input id="projection-length" name="months" type="number" min="1" max="120" value="12" required>
-        </div>
-        <button class="primary-button" type="submit">Calcola</button>
-      </form>
-    </div>
+      <div id="quick-transfer-fields" hidden><p id="quick-transfer-route"></p><label for="quick-transfer-value">Importo mensile</label><input id="quick-transfer-value" name="transferValue" inputmode="decimal"></div>
+      <button class="primary-button" type="submit">Applica</button>
+    </form>
+  </div>
 
-    <div class="projection">
-      <div class="projection-header">
-        <p id="simulation-status" class="muted" role="status"></p>
-        <div class="field">
-          <label for="projection-month">Mese della proiezione</label>
-          <select id="projection-month" disabled><option value="">—</option></select>
-        </div>
+  <dialog id="new-node-dialog" class="small-dialog" aria-labelledby="new-node-title">
+    <form id="new-node-form">
+      <div class="dialog-heading"><div><span class="eyebrow">Nuovo elemento</span><h2 id="new-node-title">Cosa vuoi aggiungere?</h2></div><button id="close-new-node" type="button" aria-label="Chiudi">×</button></div>
+      <div class="node-type-grid">
+        <button type="submit" name="type" value="bank"><strong>Conto</strong><span>Saldo e movimenti</span></button>
+        <button type="submit" name="type" value="deposit"><strong>Deposito</strong><span>Saldo e rendimento</span></button>
+        <button type="submit" name="type" value="investment"><strong>Investimento</strong><span>Capitale e rendimento</span></button>
+        <button type="submit" name="type" value="savings"><strong>Risparmio</strong><span>Disponibilità accantonata</span></button>
+        <button type="submit" name="type" value="source"><strong>Entrata</strong><span>Stipendio o altra fonte</span></button>
+        <button type="submit" name="type" value="expense"><strong>Spesa</strong><span>Ricorrente o una tantum</span></button>
       </div>
-      <div class="table-scroll" role="region" aria-label="Risultati della simulazione" tabindex="0">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Nodo</th>
-              <th scope="col">Saldo iniziale</th>
-              <th scope="col">Entrate</th>
-              <th scope="col">Uscite</th>
-              <th scope="col">Rendimento</th>
-              <th scope="col">Saldo finale</th>
-            </tr>
-          </thead>
-          <tbody id="projection-rows"></tbody>
-        </table>
-      </div>
-    </div>
+    </form>
+  </dialog>
+
+  <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">
+    <div class="dialog-heading"><div><span class="eyebrow">Proiezione</span><h2 id="simulation-heading">Simulazione</h2></div><button id="close-simulation" type="button" aria-label="Chiudi">×</button></div>
+    <form id="simulation-form" class="simulation-form"><div class="field"><label for="projection-length">Orizzonte in mesi</label><input id="projection-length" name="months" type="number" min="1" max="120" value="12" required></div><button class="primary-button" type="submit">Calcola</button></form>
+    <div class="projection-header"><p id="simulation-status" role="status"></p><div class="field"><label for="projection-month">Periodo</label><select id="projection-month" disabled></select></div></div>
+    <div class="table-scroll" role="region" aria-label="Risultati" tabindex="0"><table><thead><tr><th scope="col">Elemento</th><th scope="col">Inizio</th><th scope="col">Entrate</th><th scope="col">Uscite</th><th scope="col">Rendimento</th><th scope="col">Disponibilità</th></tr></thead><tbody id="projection-rows"></tbody></table></div>
   </dialog>
 </body>
 </html>

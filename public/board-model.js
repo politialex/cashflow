@@ -83,10 +83,40 @@ function transferOccurs(frequency, month) {
     || (frequency === 'once' && month === 1);
 }
 
+function transfersInFlowOrder(nodes, transfers) {
+  const incoming = new Map(nodes.map(({ id }) => [id, 0]));
+  const outgoing = new Map(nodes.map(({ id }) => [id, []]));
+  for (const transfer of transfers) {
+    incoming.set(transfer.to, incoming.get(transfer.to) + 1);
+    outgoing.get(transfer.from).push(transfer.to);
+  }
+
+  const rank = new Map();
+  const queue = nodes.filter(({ id }) => incoming.get(id) === 0).map(({ id }) => id);
+  for (let index = 0; index < queue.length; index += 1) {
+    const id = queue[index];
+    rank.set(id, index);
+    for (const destination of outgoing.get(id)) {
+      incoming.set(destination, incoming.get(destination) - 1);
+      if (incoming.get(destination) === 0) queue.push(destination);
+    }
+  }
+
+  // Cycles have no unique upstream node. Their original node order is a stable tie-breaker.
+  for (const { id } of nodes) {
+    if (!rank.has(id)) rank.set(id, rank.size);
+  }
+
+  return transfers.map((transfer, index) => ({ transfer, index }))
+    .sort((left, right) => rank.get(left.transfer.from) - rank.get(right.transfer.from) || left.index - right.index)
+    .map(({ transfer }) => transfer);
+}
+
 export function simulateBoard(board, months) {
   validateBoard(board, months);
 
   const monthlyRates = board.nodes.map(({ annualRate }) => Math.expm1(Math.log1p(annualRate / 100) / 12));
+  const orderedTransfers = transfersInFlowOrder(board.nodes, board.transfers);
   let openings = board.nodes.map(({ openingCents }) => openingCents);
   const periods = [];
 
@@ -101,7 +131,7 @@ export function simulateBoard(board, months) {
     }));
     const nodesById = new Map(nodes.map((node) => [node.id, node]));
 
-    for (const transfer of board.transfers) {
+    for (const transfer of orderedTransfers) {
       if (!transferOccurs(transfer.frequency, month)) {
         continue;
       }

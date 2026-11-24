@@ -1,109 +1,152 @@
 import { simulateBoard } from './board-model.js';
 
 const storageKey = 'cashflow-studio.board.v1';
+const cameraKey = 'cashflow-studio.camera.v1';
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
-const percentFormat = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 6 });
+const percent = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
 const types = {
   bank: 'Conto bancario', deposit: 'Conto deposito', investment: 'Investimento',
-  savings: 'Risparmi', cash: 'Liquidità', source: 'Entrata', expense: 'Spesa', other: 'Altro',
+  savings: 'Risparmio', cash: 'Liquidità', source: 'Entrata', expense: 'Spesa', other: 'Altro',
 };
-const frequencyNames = { monthly: 'mensile', annual: 'annuale', once: 'una tantum' };
+const accountTypes = new Set(['bank', 'deposit', 'investment', 'savings', 'cash']);
 const get = (id) => document.getElementById(id);
-const canvas = get('board-canvas');
 const viewport = get('board-viewport');
+const canvas = get('board-canvas');
+const nodesLayer = get('board-nodes');
+const edgesLayer = get('board-edges');
+const nodeForm = get('node-form');
+const transferForm = get('transfer-form');
 const simulation = get('simulation');
+const newNodeDialog = get('new-node-dialog');
+const quickEditor = get('quick-editor');
 const mobilePanels = matchMedia('(max-width: 900px)');
 const panels = [
   { element: get('nodes-panel'), button: get('toggle-nodes') },
   { element: get('inspector'), button: get('toggle-inspector') },
 ];
-const nodesLayer = get('board-nodes');
-const edgesLayer = get('board-edges');
-const nodeForm = get('node-form');
-const transferForm = get('transfer-form');
-const simulationForm = get('simulation-form');
-const boardStatus = get('board-status');
-const projectionMonth = get('projection-month');
-const transferList = get('transfer-list');
-const addTransfer = get('add-transfer');
-const maxPosition = 4000;
-const nodeWidth = 208;
-const nodeHeight = 92;
+const grid = 20;
+const world = { width: 3200, height: 2200 };
 let board = { nodes: [], transfers: [] };
-let storageReadable = true;
+let camera = { x: 0, y: 0, zoom: 1 };
 let selected = null;
 let horizon = 12;
-let activeDrag = null;
+let drag = null;
+let connection = null;
+let connectFrom = null;
+let pendingNodePosition = null;
+let quickTarget = null;
+let history = [];
+let future = [];
+let storageReadable = true;
 
 const money = (cents) => euro.format(cents / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
 const decimalInput = (number) => String(number).replace('.', ',');
+const signedFlow = (node) => node.monthlyInCents - node.monthlyOutCents;
 const id = () => crypto.randomUUID();
-const clamp = (value) => Math.max(0, Math.min(Math.round(value), maxPosition));
+const snap = (value) => Math.max(0, Math.min(Math.round(value / grid) * grid, 5000));
+const nodeIsAccount = (node) => accountTypes.has(node.type);
+const nodeSize = (node) => nodeIsAccount(node) ? { width: 240, height: 124 } : { width: 176, height: 74 };
+const cloneBoard = (value = board) => structuredClone(value);
 
-function parseDecimal(raw, label, minimum, maximum, digits) {
-  const text = raw.trim().replace(',', '.');
-  const pattern = new RegExp('^-?\\d+(?:\\.\\d{1,' + digits + '})?$');
-  const value = text === '' ? 0 : Number(text);
-  if ((text !== '' && !pattern.test(text)) || !Number.isFinite(value) || value < minimum || value > maximum) {
-    throw new RangeError(label + ' deve essere compreso tra ' + decimalInput(minimum) + ' e ' + decimalInput(maximum) + '.');
+function parseDecimal(raw, label, minimum, maximum, digits = 2) {
+  const text = String(raw ?? '').trim().replace(',', '.');
+  const pattern = new RegExp('^[+-]?\\d+(?:\\.\\d{1,' + digits + '})?$');
+  if (!pattern.test(text)) throw new RangeError(label + ': inserisci un numero valido.');
+  const value = Number(text);
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new RangeError(label + ': valore compreso tra ' + minimum + ' e ' + maximum + '.');
   }
   return value;
 }
 
-function cents(raw, label, signed = false) {
-  return Math.round(parseDecimal(raw, label, signed ? -9999999.99 : 0, 9999999.99, 2) * 100);
+function toCents(raw, label, signed = false) {
+  return Math.round(parseDecimal(raw, label, signed ? -9_999_999.99 : 0, 9_999_999.99) * 100);
+}
+
+function applySignedFlow(target, cents) {
+  return { ...target, monthlyInCents: Math.max(0, cents), monthlyOutCents: Math.max(0, -cents) };
 }
 
 function nodeName(key) {
-  return board.nodes.find((node) => node.id === key)?.name ?? 'Nodo';
+  return board.nodes.find((node) => node.id === key)?.name ?? 'Elemento';
 }
 
 function writeStatus(message) {
-  boardStatus.textContent = message;
+  get('board-status').textContent = message;
+}
+
+function validateSavedBoard(value) {
+  simulateBoard(value, 1);
+  for (const node of value.nodes) {
+    if (typeof node.name !== 'string' || !Object.hasOwn(types, node.type)
+      || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+      throw new Error('Board non valida');
+    }
+  }
+  return value;
 }
 
 try {
   const saved = localStorage.getItem(storageKey);
-  if (saved !== null) {
-    const parsed = JSON.parse(saved);
-    simulateBoard(parsed, horizon);
-    for (const node of parsed.nodes) {
-      if (typeof node.name !== 'string' || !Object.hasOwn(types, node.type)
-        || !Number.isFinite(node.x) || !Number.isFinite(node.y)
-        || node.x !== clamp(node.x) || node.y !== clamp(node.y)) {
-        throw new Error('Dati della board non validi.');
-      }
-    }
-    board = parsed;
-  }
+  if (saved) board = validateSavedBoard(JSON.parse(saved));
+  const savedCamera = JSON.parse(localStorage.getItem(cameraKey) ?? 'null');
+  if (savedCamera && Number.isFinite(savedCamera.x) && Number.isFinite(savedCamera.y)
+    && Number.isFinite(savedCamera.zoom)) camera = savedCamera;
 } catch {
   storageReadable = false;
-  writeStatus('Impossibile leggere il salvataggio. Le modifiche di questa sessione resteranno temporanee.');
+  writeStatus('Il salvataggio del browser non è disponibile. Le modifiche restano in questa sessione.');
 }
 
-function commit(next, selection, message) {
+function save() {
+  if (!storageReadable) return false;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(board));
+    localStorage.setItem(cameraKey, JSON.stringify(camera));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function commit(next, nextSelection, message, record = true) {
   try {
     simulateBoard(next, horizon);
   } catch (error) {
     writeStatus(error.message);
     return false;
   }
-
-  let saved = false;
-  if (storageReadable) {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      saved = true;
-    } catch {
-      // Keep editing available for the current session.
-    }
+  if (record) {
+    history.push(cloneBoard());
+    if (history.length > 60) history.shift();
+    future = [];
   }
   board = next;
-  selected = selection;
+  selected = nextSelection;
+  save();
   render();
-  writeStatus(saved ? message : message + ' Modifica temporanea: il salvataggio nel browser non è disponibile.');
+  writeStatus(message);
   return true;
+}
+
+function undo() {
+  if (!history.length) return;
+  future.push(cloneBoard());
+  board = history.pop();
+  selected = null;
+  save();
+  render();
+  writeStatus('Modifica annullata.');
+}
+
+function redo() {
+  if (!future.length) return;
+  history.push(cloneBoard());
+  board = future.pop();
+  selected = null;
+  save();
+  render();
+  writeStatus('Modifica ripristinata.');
 }
 
 function updatePanels(openPanel = null) {
@@ -114,183 +157,276 @@ function updatePanels(openPanel = null) {
   }
 }
 
-function showDetails(field) {
-  updatePanels('inspector');
-  field.focus({ preventScroll: true });
+function showInspector() {
+  if (mobilePanels.matches) updatePanels('inspector');
 }
 
-function focusCard(key) {
-  const card = nodesLayer.querySelector('[data-id="' + CSS.escape(key) + '"]');
-  card?.focus({ preventScroll: true });
-  card?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+function screenToWorld(clientX, clientY) {
+  const rect = viewport.getBoundingClientRect();
+  return {
+    x: snap((clientX - rect.left - camera.x) / camera.zoom),
+    y: snap((clientY - rect.top - camera.y) / camera.zoom),
+  };
 }
 
-function select(kind, key) {
-  selected = { kind, id: key };
-  render();
-  if (kind === 'transfer') {
-    showDetails(transferForm.elements.namedItem('from'));
-  } else {
-    focusCard(key);
-    if (mobilePanels.matches) showDetails(nodeForm.elements.namedItem('name'));
+function applyCamera() {
+  canvas.style.transform = 'translate(' + camera.x + 'px,' + camera.y + 'px) scale(' + camera.zoom + ')';
+  viewport.style.setProperty('--grid-screen', grid * camera.zoom + 'px');
+  viewport.style.setProperty('--grid-x', camera.x % (grid * camera.zoom) + 'px');
+  viewport.style.setProperty('--grid-y', camera.y % (grid * camera.zoom) + 'px');
+  get('zoom-level').value = Math.round(camera.zoom * 100) + '%';
+  save();
+}
+
+function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + viewport.clientWidth / 2,
+  clientY = viewport.getBoundingClientRect().top + viewport.clientHeight / 2) {
+  const rect = viewport.getBoundingClientRect();
+  const oldZoom = camera.zoom;
+  const zoom = Math.max(.35, Math.min(2, nextZoom));
+  const worldX = (clientX - rect.left - camera.x) / oldZoom;
+  const worldY = (clientY - rect.top - camera.y) / oldZoom;
+  camera.zoom = zoom;
+  camera.x = clientX - rect.left - worldX * zoom;
+  camera.y = clientY - rect.top - worldY * zoom;
+  applyCamera();
+}
+
+function fitView() {
+  if (!board.nodes.length) {
+    camera = { x: 24, y: 24, zoom: 1 };
+    applyCamera();
+    return;
   }
+  const bounds = board.nodes.reduce((area, node) => {
+    const size = nodeSize(node);
+    return {
+      left: Math.min(area.left, node.x), top: Math.min(area.top, node.y),
+      right: Math.max(area.right, node.x + size.width), bottom: Math.max(area.bottom, node.y + size.height),
+    };
+  }, { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
+  const padding = 90;
+  const zoom = Math.max(.35, Math.min(1.2,
+    (viewport.clientWidth - padding * 2) / (bounds.right - bounds.left),
+    (viewport.clientHeight - padding * 2) / (bounds.bottom - bounds.top)));
+  camera.zoom = zoom;
+  camera.x = (viewport.clientWidth - (bounds.right - bounds.left) * zoom) / 2 - bounds.left * zoom;
+  camera.y = (viewport.clientHeight - (bounds.bottom - bounds.top) * zoom) / 2 - bounds.top * zoom;
+  applyCamera();
 }
 
-for (const { element, button } of panels) {
-  button.addEventListener('click', () => {
-    const open = !element.classList.contains('panel-open');
-    updatePanels(open ? element.id : null);
-  });
-}
-mobilePanels.addEventListener('change', () => updatePanels());
-document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !mobilePanels.matches || simulation.open) return;
-  const active = panels.find(({ element }) => element.classList.contains('panel-open'));
-  if (active) {
-    updatePanels();
-    active.button.focus();
-  }
-});
-updatePanels();
-
-function makeNode(name, type, x, y, overrides = {}) {
-  return { id: id(), name, type, x, y, openingCents: 0, monthlyInCents: 0, monthlyOutCents: 0, annualRate: 0, ...overrides };
+function makeNode(type, x, y) {
+  const defaults = {
+    bank: ['Nuovo conto', 0], deposit: ['Conto deposito', 0], investment: ['Investimento', 0],
+    savings: ['Risparmio', 0], cash: ['Liquidità', 0], source: ['Nuova entrata', 250_000],
+    expense: ['Nuova spesa', -50_000], other: ['Altro', 0],
+  };
+  const [name, flow] = defaults[type] ?? defaults.other;
+  return applySignedFlow({
+    id: id(), name, type, x: snap(x), y: snap(y), openingCents: 0,
+    monthlyInCents: 0, monthlyOutCents: 0, annualRate: 0,
+  }, flow);
 }
 
-function makeTransfer(from, to, overrides = {}) {
-  return { id: id(), from, to, mode: 'fixed', amountCents: 0, percent: 0, frequency: 'monthly', ...overrides };
+function inferredTransferAmount(from, to) {
+  if (from.type === 'source' && from.monthlyInCents) return from.monthlyInCents;
+  if (to.type === 'expense' && to.monthlyOutCents) return to.monthlyOutCents;
+  return 0;
 }
 
-function descriptionOf(transfer) {
-  const value = transfer.mode === 'fixed' ? money(transfer.amountCents) : percentFormat.format(transfer.percent) + '%';
-  return value + ' · ' + frequencyNames[transfer.frequency];
+function makeTransfer(from, to) {
+  return {
+    id: id(), from: from.id, to: to.id, mode: 'fixed',
+    amountCents: inferredTransferAmount(from, to), percent: 0, frequency: 'monthly',
+  };
 }
 
-function drawEdges(positions = new Map()) {
-  const svg = 'http://www.w3.org/2000/svg';
-  const defs = document.createElementNS(svg, 'defs');
-  const marker = document.createElementNS(svg, 'marker');
-  for (const [name, value] of Object.entries({ id: 'flow-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto' })) {
-    marker.setAttribute(name, value);
-  }
-  const tip = document.createElementNS(svg, 'path');
-  tip.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
-  tip.setAttribute('fill', 'context-stroke');
-  marker.append(tip);
+function transferAmount(transfer, firstMonth) {
+  if (transfer.mode === 'fixed') return transfer.amountCents;
+  const origin = firstMonth.nodes.find(({ id }) => id === transfer.from);
+  return Math.round(origin.inflow * transfer.percent / 100);
+}
+
+function connectionAnchor(node, side) {
+  const size = nodeSize(node);
+  return {
+    left: { x: node.x, y: node.y + size.height / 2 },
+    right: { x: node.x + size.width, y: node.y + size.height / 2 },
+    top: { x: node.x + size.width / 2, y: node.y },
+    bottom: { x: node.x + size.width / 2, y: node.y + size.height },
+  }[side];
+}
+
+function bestSides(from, to) {
+  const fromSize = nodeSize(from);
+  const toSize = nodeSize(to);
+  const dx = (to.x + toSize.width / 2) - (from.x + fromSize.width / 2);
+  const dy = (to.y + toSize.height / 2) - (from.y + fromSize.height / 2);
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? ['right', 'left'] : ['left', 'right'];
+  return dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom'];
+}
+
+function edgePath(start, end, startSide) {
+  const horizontal = startSide === 'left' || startSide === 'right';
+  const distance = Math.max(48, Math.min(180, (horizontal ? Math.abs(end.x - start.x) : Math.abs(end.y - start.y)) * .48));
+  const direction = startSide === 'left' || startSide === 'top' ? -1 : 1;
+  const first = horizontal ? { x: start.x + distance * direction, y: start.y } : { x: start.x, y: start.y + distance * direction };
+  const second = horizontal ? { x: end.x - distance * direction, y: end.y } : { x: end.x, y: end.y - distance * direction };
+  return 'M ' + start.x + ' ' + start.y + ' C ' + first.x + ' ' + first.y + ', ' + second.x + ' ' + second.y + ', ' + end.x + ' ' + end.y;
+}
+
+function svgElement(name, attributes = {}) {
+  const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+  return element;
+}
+
+function drawEdges(firstMonth, temporaryPoint = null) {
+  const defs = svgElement('defs');
+  const marker = svgElement('marker', { id: 'flow-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto' });
+  marker.append(svgElement('path', { d: 'M 0 0 L 10 5 L 0 10 z' }));
   defs.append(marker);
-
-  const nodes = new Map(board.nodes.map((node) => [node.id, positions.get(node.id) ?? node]));
   const content = [defs];
-  board.transfers.forEach((transfer, index) => {
-    const from = nodes.get(transfer.from);
-    const to = nodes.get(transfer.to);
-    const vertical = Math.abs(to.x - from.x) < nodeWidth && Math.abs(to.y - from.y) >= nodeHeight;
-    const direction = (vertical ? to.y >= from.y : to.x >= from.x) ? 1 : -1;
-    const startX = from.x + (vertical ? nodeWidth / 2 : direction > 0 ? nodeWidth : 0);
-    const endX = to.x + (vertical ? nodeWidth / 2 : direction > 0 ? 0 : nodeWidth);
-    const startY = from.y + (vertical ? direction > 0 ? nodeHeight : 0 : nodeHeight / 2);
-    const endY = to.y + (vertical ? direction > 0 ? 0 : nodeHeight : nodeHeight / 2);
-    const gap = vertical ? endY - startY : endX - startX;
-    const offset = direction * Math.max(36, Math.min(140, Math.abs(gap) / 2));
-    const controlX = vertical ? 0 : offset;
-    const controlY = vertical ? offset : 0;
-    const path = document.createElementNS(svg, 'path');
-    path.setAttribute('class', 'board-edge' + (selected?.id === transfer.id ? ' is-selected' : ''));
-    path.setAttribute('d', `M ${startX} ${startY} C ${startX + controlX} ${startY + controlY}, ${endX - controlX} ${endY - controlY}, ${endX} ${endY}`);
-    path.setAttribute('marker-end', 'url(#flow-arrow)');
-
-    const label = document.createElementNS(svg, 'text');
-    label.setAttribute('class', 'edge-label');
-    label.setAttribute('x', (startX + endX) / 2);
-    label.setAttribute('y', (startY + endY) / 2 - 9 - 14 * (index % 2));
-    label.setAttribute('text-anchor', 'middle');
-    const number = String(index + 1);
-    label.textContent = !vertical && Math.abs(gap) < 145 ? number : number + ' · ' + descriptionOf(transfer);
-    content.push(path, label);
-  });
+  for (const transfer of board.transfers) {
+    const from = board.nodes.find(({ id }) => id === transfer.from);
+    const to = board.nodes.find(({ id }) => id === transfer.to);
+    const [fromSide, toSide] = bestSides(from, to);
+    const start = connectionAnchor(from, fromSide);
+    const end = connectionAnchor(to, toSide);
+    const group = svgElement('g', { class: 'edge-group' + (selected?.id === transfer.id ? ' is-selected' : ''), 'data-id': transfer.id, tabindex: '0', role: 'button', 'aria-label': nodeName(transfer.from) + ' verso ' + nodeName(transfer.to) });
+    const d = edgePath(start, end, fromSide);
+    group.append(svgElement('path', { class: 'edge-hit', d }));
+    group.append(svgElement('path', { class: 'board-edge', d, 'marker-end': 'url(#flow-arrow)' }));
+    const amount = transferAmount(transfer, firstMonth);
+    const label = svgElement('text', { class: 'edge-label', x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 10, 'text-anchor': 'middle' });
+    label.textContent = '−' + money(amount) + '  →  +' + money(amount);
+    group.append(label);
+    group.addEventListener('click', (event) => { event.stopPropagation(); select('transfer', transfer.id); });
+    group.addEventListener('dblclick', (event) => { event.stopPropagation(); openQuickEditor('transfer', transfer.id, event.clientX, event.clientY); });
+    content.push(group);
+  }
+  if (connection && temporaryPoint) {
+    const from = board.nodes.find(({ id }) => id === connection.from);
+    const start = connectionAnchor(from, connection.side);
+    content.push(svgElement('path', { class: 'board-edge is-drawing', d: edgePath(start, temporaryPoint, connection.side) }));
+  }
   edgesLayer.replaceChildren(...content);
 }
 
-function moveNode(node, x, y) {
-  const moved = { ...node, x: clamp(x), y: clamp(y) };
-  commit({ ...board, nodes: board.nodes.map((item) => item.id === node.id ? moved : item) }, { kind: 'node', id: node.id }, 'Posizione aggiornata.');
-  focusCard(node.id);
+function createText(className, text) {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
 }
 
-function resizeCanvas(position) {
-  const nodes = position ? [...board.nodes, position] : board.nodes;
-  canvas.style.width = Math.max(940, ...nodes.map((node) => node.x + nodeWidth + 60)) + 'px';
-  canvas.style.height = Math.max(560, ...nodes.map((node) => node.y + nodeHeight + 58)) + 'px';
+function select(kind, key, openPanel = false) {
+  selected = { kind, id: key };
+  render();
+  if (openPanel) showInspector();
 }
 
-function addDragging(button, node) {
-  button.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || !event.isPrimary) return;
-    activeDrag = { key: node.id, startX: event.clientX, startY: event.clientY, position: null };
-    button.setPointerCapture(event.pointerId);
-  });
-  button.addEventListener('pointermove', (event) => {
-    if (activeDrag?.key !== node.id) return;
-    const dx = event.clientX - activeDrag.startX;
-    const dy = event.clientY - activeDrag.startY;
-    if (!activeDrag.position && Math.hypot(dx, dy) < 5) return;
-    const position = { x: clamp(node.x + dx), y: clamp(node.y + dy) };
-    activeDrag.position = position;
-    button.style.left = position.x + 'px';
-    button.style.top = position.y + 'px';
-    resizeCanvas(position);
-    drawEdges(new Map([[node.id, position]]));
-  });
-  button.addEventListener('pointerup', () => {
-    const position = activeDrag?.position;
-    activeDrag = null;
-    if (position) moveNode(node, position.x, position.y);
-  });
-  button.addEventListener('pointercancel', () => {
-    activeDrag = null;
-    render();
-  });
-  button.addEventListener('keydown', (event) => {
-    const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-    if (!Object.hasOwn(directions, event.key)) return;
-    event.preventDefault();
-    const [dx, dy] = directions[event.key];
-    const step = event.shiftKey ? 48 : 12;
-    moveNode(node, node.x + step * dx, node.y + step * dy);
-  });
+function startNodeDrag(event, node, card) {
+  if (event.button !== 0 || event.target.closest('.node-port')) return;
+  event.stopPropagation();
+  drag = { kind: 'node', id: node.id, startX: event.clientX, startY: event.clientY, x: node.x, y: node.y, moved: false };
+  card.setPointerCapture(event.pointerId);
+}
+
+function moveNodeDrag(event, node, card) {
+  if (drag?.kind !== 'node' || drag.id !== node.id) return;
+  const dx = (event.clientX - drag.startX) / camera.zoom;
+  const dy = (event.clientY - drag.startY) / camera.zoom;
+  if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+  drag.moved = true;
+  const x = snap(drag.x + dx);
+  const y = snap(drag.y + dy);
+  card.style.left = x + 'px';
+  card.style.top = y + 'px';
+  const preview = board.nodes.map((item) => item.id === node.id ? { ...item, x, y } : item);
+  const saved = board.nodes;
+  board.nodes = preview;
+  drawEdges(simulateBoard(board, 1)[0]);
+  board.nodes = saved;
+}
+
+function endNodeDrag(node, card) {
+  if (drag?.kind !== 'node' || drag.id !== node.id) return;
+  const moved = drag.moved;
+  const x = Number.parseFloat(card.style.left);
+  const y = Number.parseFloat(card.style.top);
+  drag = null;
+  if (moved) {
+    commit({ ...board, nodes: board.nodes.map((item) => item.id === node.id ? { ...item, x, y } : item) }, { kind: 'node', id: node.id }, 'Posizione aggiornata.');
+  } else {
+    selected = { kind: 'node', id: node.id };
+    for (const element of nodesLayer.querySelectorAll('.board-node')) {
+      element.setAttribute('aria-selected', String(element.dataset.id === node.id));
+    }
+    const firstMonth = simulateBoard(board, 1)[0];
+    renderInspector(firstMonth);
+    renderNodeList(firstMonth);
+    drawEdges(firstMonth);
+  }
+}
+
+function startConnection(event, node, side) {
+  event.preventDefault();
+  event.stopPropagation();
+  connection = { from: node.id, side, pointerId: event.pointerId };
+  viewport.setPointerCapture(event.pointerId);
+  selected = { kind: 'node', id: node.id };
+  writeStatus('Trascina fino a un altro elemento.');
 }
 
 function renderBoard(firstMonth) {
   get('board-empty').hidden = board.nodes.length > 0;
-  addTransfer.disabled = board.nodes.length < 2;
-  resizeCanvas();
-  const results = new Map(firstMonth.nodes.map((row) => [row.id, row]));
+  const results = new Map(firstMonth.nodes.map((result) => [result.id, result]));
   const cards = board.nodes.map((node) => {
     const result = results.get(node.id);
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'board-node';
-    button.dataset.type = node.type;
-    button.dataset.id = node.id;
-    button.style.left = node.x + 'px';
-    button.style.top = node.y + 'px';
-    button.setAttribute('aria-pressed', String(selected?.id === node.id));
-    for (const [name, text] of Object.entries({
-      type: types[node.type], title: node.name, balance: money(result.balance),
-      flows: 'Entrate ' + money(result.inflow) + ' · Uscite ' + money(result.outflow),
-    })) {
-      const part = document.createElement('span');
-      part.className = 'node-' + name;
-      part.textContent = text;
-      if (name === 'balance' && result.balance < 0) part.classList.add('negative');
-      button.append(part);
+    const account = nodeIsAccount(node);
+    const card = document.createElement('article');
+    card.className = 'board-node ' + (account ? 'account-node' : 'compact-node');
+    card.dataset.type = node.type;
+    card.dataset.id = node.id;
+    card.tabIndex = 0;
+    card.setAttribute('aria-selected', String(selected?.kind === 'node' && selected.id === node.id));
+    card.style.left = node.x + 'px';
+    card.style.top = node.y + 'px';
+    card.append(
+      createText('node-type', types[node.type]),
+      createText('node-title', node.name),
+      createText('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node)))),
+    );
+    if (account) {
+      card.append(createText('node-caption', 'Disponibilità'));
+      if (node.annualRate) card.append(createText('node-rate', percent.format(node.annualRate) + '% annuo'));
+    } else {
+      card.append(createText('node-caption', signedFlow(node) >= 0 ? 'Entrata mensile' : 'Uscita mensile'));
     }
-    button.addEventListener('click', () => select('node', node.id));
-    addDragging(button, node);
-    return button;
+    for (const side of ['top', 'right', 'bottom', 'left']) {
+      const port = document.createElement('button');
+      port.type = 'button';
+      port.className = 'node-port port-' + side;
+      port.dataset.side = side;
+      port.setAttribute('aria-label', 'Collega da ' + node.name);
+      port.addEventListener('pointerdown', (event) => startConnection(event, node, side));
+      card.append(port);
+    }
+    card.addEventListener('pointerdown', (event) => startNodeDrag(event, node, card));
+    card.addEventListener('pointermove', (event) => moveNodeDrag(event, node, card));
+    card.addEventListener('pointerup', () => endNodeDrag(node, card));
+    card.addEventListener('dblclick', (event) => { event.stopPropagation(); openQuickEditor('node', node.id, event.clientX, event.clientY); });
+    card.addEventListener('keydown', (event) => {
+      const direction = { ArrowLeft: [-grid, 0], ArrowRight: [grid, 0], ArrowUp: [0, -grid], ArrowDown: [0, grid] }[event.key];
+      if (!direction) return;
+      event.preventDefault();
+      const scale = event.shiftKey ? 3 : 1;
+      commit({ ...board, nodes: board.nodes.map((item) => item.id === node.id ? { ...item, x: snap(item.x + direction[0] * scale), y: snap(item.y + direction[1] * scale) } : item) }, { kind: 'node', id: node.id }, 'Posizione aggiornata.');
+    });
+    return card;
   });
   nodesLayer.replaceChildren(...cards);
-  drawEdges();
+  drawEdges(firstMonth);
 }
 
 function setValues(form, values) {
@@ -298,179 +434,285 @@ function setValues(form, values) {
 }
 
 function renderInspector(firstMonth) {
-  const node = selected?.kind === 'node' && board.nodes.find((item) => item.id === selected.id);
-  const transfer = selected?.kind === 'transfer' && board.transfers.find((item) => item.id === selected.id);
+  const node = selected?.kind === 'node' && board.nodes.find(({ id }) => id === selected.id);
+  const transfer = selected?.kind === 'transfer' && board.transfers.find(({ id }) => id === selected.id);
   nodeForm.hidden = !node;
   transferForm.hidden = !transfer;
   get('inspector-empty').hidden = Boolean(node || transfer);
-
   if (node) {
     setValues(nodeForm, {
-      name: node.name, type: node.type, opening: moneyInput(node.openingCents), monthlyIn: moneyInput(node.monthlyInCents),
-      monthlyOut: moneyInput(node.monthlyOutCents), annualRate: decimalInput(node.annualRate),
+      name: node.name, type: node.type, opening: moneyInput(node.openingCents),
+      flow: (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node)), annualRate: decimalInput(node.annualRate),
     });
-    const result = firstMonth.nodes.find((item) => item.id === node.id);
-    const summary = get('node-summary');
+    nodeForm.classList.toggle('compact-editor', !nodeIsAccount(node));
+    const result = firstMonth.nodes.find(({ id }) => id === node.id);
     const details = document.createElement('dl');
-    for (const [label, value] of Object.entries({
-      Entrate: result.inflow, Uscite: result.outflow, Rendimento: result.interest, Disponibilità: result.balance,
-    })) {
+    for (const [label, value] of Object.entries({ Entrate: result.inflow, Uscite: result.outflow, Disponibilità: result.balance })) {
       const term = document.createElement('dt');
       const amount = document.createElement('dd');
       term.textContent = label;
       amount.textContent = money(value);
-      if (value < 0) amount.classList.add('negative');
+      if (value < 0) amount.className = 'negative';
       details.append(term, amount);
     }
-    summary.replaceChildren(details);
+    get('node-summary').replaceChildren(details);
   }
-
   if (transfer) {
-    for (const field of ['from', 'to']) {
-      transferForm.elements.namedItem(field).replaceChildren(...board.nodes.map((item) => new Option(item.name, item.id)));
-    }
     setValues(transferForm, {
       from: transfer.from, to: transfer.to, mode: transfer.mode, frequency: transfer.frequency,
       value: transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent),
     });
-    const index = board.transfers.indexOf(transfer);
-    get('transfer-up').disabled = index === 0;
-    get('transfer-down').disabled = index === board.transfers.length - 1;
+    get('transfer-from-label').textContent = nodeName(transfer.from);
+    get('transfer-to-label').textContent = nodeName(transfer.to);
   }
 }
 
-function nodesInFlowOrder() {
-  const incoming = new Map(board.nodes.map(({ id }) => [id, 0]));
-  const downstream = new Map(board.nodes.map(({ id }) => [id, []]));
-  for (const { from, to } of board.transfers) {
-    incoming.set(to, incoming.get(to) + 1);
-    downstream.get(from).push(to);
-  }
-
-  const remaining = new Set(board.nodes);
-  const byId = new Map(board.nodes.map((node) => [node.id, node]));
-  const ready = board.nodes.filter(({ id }) => incoming.get(id) === 0);
-  const ordered = [];
-  let nextReady = 0;
-  while (remaining.size) {
-    // A cycle has no upstream starting node. Break the tie by insertion order.
-    const node = nextReady < ready.length ? ready[nextReady++] : remaining.values().next().value;
-    if (!remaining.delete(node)) continue;
-    ordered.push(node);
-    for (const key of downstream.get(node.id)) {
-      incoming.set(key, incoming.get(key) - 1);
-      if (incoming.get(key) === 0 && remaining.has(byId.get(key))) {
-        ready.push(byId.get(key));
-      }
-    }
-  }
-  return ordered;
-}
-
-function renderNavigator() {
-  const nodeList = get('node-list');
+function renderNodeList(firstMonth) {
+  const results = new Map(firstMonth.nodes.map((result) => [result.id, result]));
   get('node-list-empty').hidden = board.nodes.length > 0;
-  nodeList.replaceChildren(...nodesInFlowOrder().map((node) => {
-    const button = document.createElement('button');
-    const name = document.createElement('span');
-    const type = document.createElement('small');
-    button.type = 'button';
-    button.className = 'node-list-item';
-    button.dataset.type = node.type;
-    button.setAttribute('aria-pressed', String(selected?.id === node.id));
-    name.textContent = node.name;
-    type.textContent = types[node.type];
-    button.append(name, type);
-    button.addEventListener('click', () => select('node', node.id));
-    return button;
-  }));
-
-  transferList.replaceChildren(...board.transfers.map((item, index) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'transfer-item';
-    button.setAttribute('aria-pressed', String(selected?.id === item.id));
-    button.textContent = (index + 1) + '. ' + nodeName(item.from) + ' → ' + nodeName(item.to) + ' · ' + descriptionOf(item);
-    button.addEventListener('click', () => select('transfer', item.id));
-    return button;
+  get('node-list').replaceChildren(...board.nodes.map((node) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'node-list-item';
+    item.dataset.type = node.type;
+    item.setAttribute('role', 'listitem');
+    item.setAttribute('aria-pressed', String(selected?.kind === 'node' && selected.id === node.id));
+    item.append(createText('list-name', node.name), createText('list-value', nodeIsAccount(node) ? money(results.get(node.id).balance) : money(Math.abs(signedFlow(node)))));
+    item.addEventListener('click', () => {
+      select('node', node.id);
+      const size = nodeSize(node);
+      camera.x = viewport.clientWidth / 2 - (node.x + size.width / 2) * camera.zoom;
+      camera.y = viewport.clientHeight / 2 - (node.y + size.height / 2) * camera.zoom;
+      applyCamera();
+      if (mobilePanels.matches) updatePanels();
+    });
+    return item;
   }));
 }
 
-function drawProjection(projected, period) {
-  const rows = get('projection-rows');
-  const month = projected[period - 1];
-  rows.replaceChildren(...month.nodes.map((item) => {
+function drawProjection(periods, monthNumber) {
+  const period = periods[monthNumber - 1];
+  get('projection-rows').replaceChildren(...period.nodes.map((result) => {
     const row = document.createElement('tr');
-    const heading = document.createElement('th');
-    heading.scope = 'row';
-    heading.textContent = nodeName(item.id);
-    row.append(heading);
-    for (const amount of [item.opening, item.inflow, item.outflow, item.interest, item.balance]) {
+    const name = document.createElement('th');
+    name.scope = 'row';
+    name.textContent = nodeName(result.id);
+    row.append(name);
+    for (const value of [result.opening, result.inflow, result.outflow, result.interest, result.balance]) {
       const cell = row.insertCell();
-      cell.textContent = money(amount);
-      if (amount < 0) cell.classList.add('negative');
+      cell.textContent = money(value);
+      if (value < 0) cell.className = 'negative';
     }
     return row;
   }));
-  get('simulation-status').textContent = month.nodes.length
-    ? 'Mese ' + period + ' di ' + projected.length + ' · importi in euro'
-    : 'Aggiungi un nodo alla board per calcolare la simulazione.';
+  get('simulation-status').textContent = 'Mese ' + monthNumber + ' di ' + periods.length;
 }
 
 function render() {
-  const months = simulateBoard(board, horizon);
-  renderBoard(months[0]);
-  renderInspector(months[0]);
-  renderNavigator();
-  const period = Math.min(Number(projectionMonth.value) || horizon, horizon);
-  projectionMonth.replaceChildren(...months.map(({ month }) => new Option('Mese ' + month, month)));
-  projectionMonth.value = period;
+  const periods = simulateBoard(board, horizon);
+  renderBoard(periods[0]);
+  renderInspector(periods[0]);
+  renderNodeList(periods[0]);
+  const projectionMonth = get('projection-month');
+  const activeMonth = Math.min(Number(projectionMonth.value) || horizon, horizon);
+  projectionMonth.replaceChildren(...periods.map(({ month }) => new Option('Mese ' + month, month)));
+  projectionMonth.value = activeMonth;
   projectionMonth.disabled = board.nodes.length === 0;
-  drawProjection(months, period);
+  drawProjection(periods, activeMonth);
+  applyCamera();
 }
 
-get('add-node').addEventListener('click', () => {
-  let x = 32;
-  let y = 28;
-  while (board.nodes.some((item) => Math.abs(item.x - x) < 220 && Math.abs(item.y - y) < 120) && y < maxPosition - 150) {
-    x += 278;
-    if (x > 700) {
-      x = 32;
-      y += 150;
-    }
+function openNewNode(clientX = null, clientY = null) {
+  pendingNodePosition = clientX === null
+    ? screenToWorld(viewport.getBoundingClientRect().left + viewport.clientWidth / 2, viewport.getBoundingClientRect().top + viewport.clientHeight / 2)
+    : screenToWorld(clientX, clientY);
+  newNodeDialog.showModal();
+}
+
+function placeQuickEditor(clientX, clientY) {
+  quickEditor.showPopover();
+  const width = 280;
+  quickEditor.style.left = Math.max(12, Math.min(clientX + 12, innerWidth - width - 12)) + 'px';
+  quickEditor.style.top = Math.max(12, Math.min(clientY + 12, innerHeight - quickEditor.offsetHeight - 12)) + 'px';
+}
+
+function openQuickEditor(kind, key, clientX, clientY) {
+  quickTarget = { kind, id: key };
+  const nodeFields = get('quick-node-fields');
+  const transferFields = get('quick-transfer-fields');
+  nodeFields.hidden = kind !== 'node';
+  transferFields.hidden = kind !== 'transfer';
+  if (kind === 'node') {
+    const node = board.nodes.find(({ id }) => id === key);
+    get('quick-title').textContent = 'Modifica ' + node.name;
+    get('quick-name').value = node.name;
+    get('quick-flow').value = (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node));
+    get('quick-opening').value = moneyInput(node.openingCents);
+    get('quick-rate').value = decimalInput(node.annualRate);
+    for (const element of quickEditor.querySelectorAll('.quick-account-field')) element.hidden = !nodeIsAccount(node);
+    placeQuickEditor(clientX, clientY);
+    get('quick-name').focus();
+    get('quick-name').select();
+  } else {
+    const transfer = board.transfers.find(({ id }) => id === key);
+    get('quick-title').textContent = 'Modifica collegamento';
+    get('quick-transfer-route').textContent = nodeName(transfer.from) + ' → ' + nodeName(transfer.to);
+    get('quick-transfer-value').value = transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent) + '%';
+    placeQuickEditor(clientX, clientY);
+    get('quick-transfer-value').focus();
+    get('quick-transfer-value').select();
   }
-  const item = makeNode('Nuovo nodo', 'bank', x, y);
-  if (commit({ ...board, nodes: [...board.nodes, item] }, { kind: 'node', id: item.id }, 'Nodo aggiunto.')) {
-    const input = nodeForm.elements.namedItem('name');
-    focusCard(item.id);
-    showDetails(input);
-    input.select();
+}
+
+function deleteSelection() {
+  if (!selected) return;
+  if (selected.kind === 'node') {
+    const node = board.nodes.find(({ id }) => id === selected.id);
+    if (!confirm('Eliminare «' + node.name + '» e i suoi collegamenti?')) return;
+    commit({
+      nodes: board.nodes.filter(({ id }) => id !== node.id),
+      transfers: board.transfers.filter(({ from, to }) => from !== node.id && to !== node.id),
+    }, null, 'Elemento eliminato.');
+  } else {
+    commit({ ...board, transfers: board.transfers.filter(({ id }) => id !== selected.id) }, null, 'Collegamento eliminato.');
+  }
+}
+
+function finishConnection(clientX, clientY) {
+  if (!connection) return;
+  const origin = board.nodes.find(({ id }) => id === connection.from);
+  const targetElement = document.elementFromPoint(clientX, clientY)?.closest('.board-node');
+  const target = targetElement && board.nodes.find(({ id }) => id === targetElement.dataset.id);
+  connection = null;
+  if (!target || target.id === origin.id) {
+    drawEdges(simulateBoard(board, 1)[0]);
+    writeStatus('Collegamento annullato.');
+    return;
+  }
+  const transfer = makeTransfer(origin, target);
+  if (commit({ ...board, transfers: [...board.transfers, transfer] }, { kind: 'transfer', id: transfer.id }, 'Collegamento creato.')) {
+    openQuickEditor('transfer', transfer.id, clientX, clientY);
+  }
+}
+
+viewport.addEventListener('pointerdown', (event) => {
+  if (event.target.closest('.board-node') || event.target.closest('.edge-group')) return;
+  if (event.button !== 0 && event.button !== 1) return;
+  drag = { kind: 'canvas', startX: event.clientX, startY: event.clientY, x: camera.x, y: camera.y };
+  viewport.classList.add('is-panning');
+  viewport.setPointerCapture(event.pointerId);
+  selected = null;
+  render();
+});
+
+viewport.addEventListener('pointermove', (event) => {
+  if (connection) {
+    drawEdges(simulateBoard(board, 1)[0], screenToWorld(event.clientX, event.clientY));
+    return;
+  }
+  if (drag?.kind !== 'canvas') return;
+  camera.x = drag.x + event.clientX - drag.startX;
+  camera.y = drag.y + event.clientY - drag.startY;
+  applyCamera();
+});
+
+viewport.addEventListener('pointerup', (event) => {
+  if (connection) {
+    finishConnection(event.clientX, event.clientY);
+    return;
+  }
+  if (drag?.kind === 'canvas') {
+    drag = null;
+    viewport.classList.remove('is-panning');
+    save();
   }
 });
 
-addTransfer.addEventListener('click', () => {
-  const from = selected?.kind === 'node' ? selected.id : board.nodes[0].id;
-  const to = board.nodes.find((node) => node.id !== from).id;
-  const item = makeTransfer(from, to);
-  if (commit({ ...board, transfers: [...board.transfers, item] }, { kind: 'transfer', id: item.id }, 'Collegamento aggiunto. Imposta il valore del flusso.')) {
-    showDetails(transferForm.elements.namedItem('from'));
+viewport.addEventListener('pointercancel', () => {
+  connection = null;
+  drag = null;
+  viewport.classList.remove('is-panning');
+  render();
+});
+
+viewport.addEventListener('wheel', (event) => {
+  event.preventDefault();
+  setZoom(camera.zoom * Math.exp(-event.deltaY * .0012), event.clientX, event.clientY);
+}, { passive: false });
+
+viewport.addEventListener('dblclick', (event) => {
+  if (event.target.closest('.board-node') || event.target.closest('.edge-group')) return;
+  openNewNode(event.clientX, event.clientY);
+});
+
+for (const { element, button } of panels) {
+  button.addEventListener('click', () => updatePanels(element.classList.contains('panel-open') ? null : element.id));
+}
+mobilePanels.addEventListener('change', () => updatePanels());
+updatePanels();
+
+get('zoom-in').addEventListener('click', () => setZoom(camera.zoom + .15));
+get('zoom-out').addEventListener('click', () => setZoom(camera.zoom - .15));
+get('fit-view').addEventListener('click', fitView);
+get('add-node').addEventListener('click', () => openNewNode());
+get('panel-add-node').addEventListener('click', () => openNewNode());
+get('close-new-node').addEventListener('click', () => newNodeDialog.close());
+
+get('new-node-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const type = event.submitter?.value;
+  if (!Object.hasOwn(types, type)) return;
+  const node = makeNode(type, pendingNodePosition.x, pendingNodePosition.y);
+  newNodeDialog.close();
+  if (commit({ ...board, nodes: [...board.nodes, node] }, { kind: 'node', id: node.id }, 'Elemento aggiunto.')) {
+    const rect = viewport.getBoundingClientRect();
+    const point = {
+      x: rect.left + camera.x + node.x * camera.zoom,
+      y: rect.top + camera.y + node.y * camera.zoom,
+    };
+    openQuickEditor('node', node.id, point.x, point.y);
   }
+});
+
+get('add-transfer').addEventListener('click', () => {
+  connectFrom = null;
+  viewport.classList.toggle('connect-mode');
+  const active = viewport.classList.contains('connect-mode');
+  writeStatus(active ? 'Seleziona il nodo di partenza, poi quello di destinazione.' : 'Modalità collegamento chiusa.');
+});
+
+nodesLayer.addEventListener('click', (event) => {
+  if (!viewport.classList.contains('connect-mode')) return;
+  const element = event.target.closest('.board-node');
+  if (!element) return;
+  const node = board.nodes.find(({ id }) => id === element.dataset.id);
+  if (!connectFrom) {
+    connectFrom = node;
+    writeStatus('Ora seleziona il nodo di destinazione.');
+    return;
+  }
+  if (connectFrom.id === node.id) return;
+  const transfer = makeTransfer(connectFrom, node);
+  viewport.classList.remove('connect-mode');
+  connectFrom = null;
+  commit({ ...board, transfers: [...board.transfers, transfer] }, { kind: 'transfer', id: transfer.id }, 'Collegamento creato.');
 });
 
 nodeForm.addEventListener('submit', (event) => {
   event.preventDefault();
+  const current = board.nodes.find(({ id }) => id === selected?.id);
+  if (!current) return;
   const data = new FormData(nodeForm);
   try {
-    const name = data.get('name').trim();
-    if (!name || name.length > 60 || !Object.hasOwn(types, data.get('type'))) throw new Error('Inserisci un nome valido e scegli un tipo di nodo.');
-    const changes = {
-      name, type: data.get('type'), openingCents: cents(data.get('opening'), 'Il saldo iniziale', true),
-      monthlyInCents: cents(data.get('monthlyIn'), 'Le entrate mensili'),
-      monthlyOutCents: cents(data.get('monthlyOut'), 'Le uscite mensili'),
-      annualRate: parseDecimal(data.get('annualRate'), 'Il rendimento annuo', -100, 100, 6),
+    const name = String(data.get('name')).trim();
+    if (!name) throw new RangeError('Inserisci il nome.');
+    let updated = {
+      ...current, name, type: String(data.get('type')),
+      openingCents: nodeIsAccount({ type: String(data.get('type')) }) ? toCents(data.get('opening'), 'Saldo', true) : 0,
+      annualRate: nodeIsAccount({ type: String(data.get('type')) }) ? parseDecimal(data.get('annualRate'), 'Rendimento', -100, 100, 4) : 0,
     };
-    const nodes = board.nodes.map((item) => item.id === selected.id ? { ...item, ...changes } : item);
-    commit({ ...board, nodes }, selected, 'Nodo aggiornato.');
+    updated = applySignedFlow(updated, toCents(data.get('flow'), 'Flusso', true));
+    commit({ ...board, nodes: board.nodes.map((node) => node.id === updated.id ? updated : node) }, selected, 'Elemento aggiornato.');
   } catch (error) {
     writeStatus(error.message);
   }
@@ -478,91 +720,105 @@ nodeForm.addEventListener('submit', (event) => {
 
 transferForm.addEventListener('submit', (event) => {
   event.preventDefault();
+  const current = board.transfers.find(({ id }) => id === selected?.id);
+  if (!current) return;
   const data = new FormData(transferForm);
   try {
-    const from = data.get('from');
-    const to = data.get('to');
-    if (from === to) throw new Error('Scegli due nodi diversi.');
-    const mode = data.get('mode');
-    const changes = {
-      from, to, mode, frequency: data.get('frequency'),
-      amountCents: mode === 'fixed' ? cents(data.get('value'), 'L’importo') : 0,
-      percent: mode === 'percent' ? parseDecimal(data.get('value'), 'La percentuale', 0, 100, 6) : 0,
+    const mode = String(data.get('mode'));
+    const value = parseDecimal(data.get('value'), 'Valore', 0, mode === 'fixed' ? 9_999_999.99 : 100);
+    const updated = {
+      ...current, mode, frequency: String(data.get('frequency')),
+      amountCents: mode === 'fixed' ? Math.round(value * 100) : 0,
+      percent: mode === 'percent' ? value : 0,
     };
-    const transfers = board.transfers.map((item) => item.id === selected.id ? { ...item, ...changes } : item);
-    commit({ ...board, transfers }, selected, 'Collegamento aggiornato.');
+    commit({ ...board, transfers: board.transfers.map((transfer) => transfer.id === updated.id ? updated : transfer) }, selected, 'Collegamento aggiornato.');
   } catch (error) {
     writeStatus(error.message);
   }
 });
 
-get('delete-node').addEventListener('click', () => {
-  const key = selected.id;
-  if (!window.confirm('Eliminare «' + nodeName(key) + '» e i suoi collegamenti?')) return;
-  commit({
-    nodes: board.nodes.filter((item) => item.id !== key),
-    transfers: board.transfers.filter((item) => item.from !== key && item.to !== key),
-  }, null, 'Nodo eliminato.');
-  updatePanels();
-  get('add-node').focus();
+get('delete-node').addEventListener('click', deleteSelection);
+get('delete-transfer').addEventListener('click', deleteSelection);
+get('close-quick-editor').addEventListener('click', () => quickEditor.hidePopover());
+
+get('quick-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  try {
+    if (quickTarget.kind === 'node') {
+      const current = board.nodes.find(({ id }) => id === quickTarget.id);
+      let updated = {
+        ...current,
+        name: get('quick-name').value.trim(),
+        openingCents: nodeIsAccount(current) ? toCents(get('quick-opening').value, 'Disponibilità', true) : 0,
+        annualRate: nodeIsAccount(current) ? parseDecimal(get('quick-rate').value, 'Rendimento', -100, 100, 4) : 0,
+      };
+      if (!updated.name) throw new RangeError('Inserisci il nome.');
+      updated = applySignedFlow(updated, toCents(get('quick-flow').value, 'Flusso', true));
+      commit({ ...board, nodes: board.nodes.map((node) => node.id === updated.id ? updated : node) }, { kind: 'node', id: updated.id }, 'Elemento aggiornato.');
+    } else {
+      const current = board.transfers.find(({ id }) => id === quickTarget.id);
+      const raw = get('quick-transfer-value').value.trim();
+      const percentage = raw.endsWith('%');
+      const value = parseDecimal(percentage ? raw.slice(0, -1) : raw, 'Valore', 0, percentage ? 100 : 9_999_999.99);
+      const updated = { ...current, mode: percentage ? 'percent' : 'fixed', amountCents: percentage ? 0 : Math.round(value * 100), percent: percentage ? value : 0 };
+      commit({ ...board, transfers: board.transfers.map((transfer) => transfer.id === updated.id ? updated : transfer) }, { kind: 'transfer', id: updated.id }, 'Collegamento aggiornato.');
+    }
+    quickEditor.hidePopover();
+  } catch (error) {
+    writeStatus(error.message);
+  }
 });
-
-get('delete-transfer').addEventListener('click', () => {
-  commit({ ...board, transfers: board.transfers.filter((item) => item.id !== selected.id) }, null, 'Collegamento eliminato.');
-  updatePanels();
-  addTransfer.focus();
-});
-
-function reorderTransfer(direction) {
-  const index = board.transfers.findIndex((item) => item.id === selected.id);
-  const destination = index + direction;
-  if (destination < 0 || destination >= board.transfers.length) return;
-  const transfers = [...board.transfers];
-  [transfers[index], transfers[destination]] = [transfers[destination], transfers[index]];
-  commit({ ...board, transfers }, selected, 'Ordine dei collegamenti aggiornato.');
-}
-
-get('transfer-up').addEventListener('click', () => reorderTransfer(-1));
-get('transfer-down').addEventListener('click', () => reorderTransfer(1));
 
 get('load-example').addEventListener('click', () => {
-  if (board.nodes.length && !window.confirm('Sostituire la board attuale con lo scenario di esempio?')) return;
-  const salary = makeNode('Stipendio', 'source', 30, 208, { monthlyInCents: 240000 });
-  const right = Math.max(730, Math.min(940, viewport.clientWidth)) - nodeWidth - 24;
-  const center = Math.round((30 + right) / 2);
-  const bank = makeNode('Conto principale', 'bank', center, 208, { openingCents: 120000 });
-  const bills = makeNode('Conto per le spese', 'bank', right, 64, { monthlyOutCents: 135000 });
-  const deposit = makeNode('Conto deposito', 'deposit', right, 356, { openingCents: 500000, annualRate: 2 });
+  if (board.nodes.length && !confirm('Sostituire la board attuale con l’esempio?')) return;
+  const salary = applySignedFlow(makeNode('source', 160, 520), 240_000);
+  salary.name = 'Stipendio';
+  const bank = makeNode('bank', 520, 480);
+  Object.assign(bank, { name: 'Conto principale', openingCents: 120_000 });
+  const bills = applySignedFlow(makeNode('expense', 950, 260), -135_000);
+  bills.name = 'Spese mensili';
+  const deposit = makeNode('deposit', 950, 560);
+  Object.assign(deposit, { name: 'Conto deposito', openingCents: 500_000, annualRate: 2 });
+  const investment = makeNode('investment', 950, 820);
+  Object.assign(investment, { name: 'Investimenti', openingCents: 800_000, annualRate: 4 });
   const transfers = [
-    makeTransfer(salary.id, bank.id, { mode: 'percent', percent: 100 }),
-    makeTransfer(bank.id, bills.id, { amountCents: 140000 }),
-    makeTransfer(bank.id, deposit.id, { amountCents: 60000 }),
+    { ...makeTransfer(salary, bank), mode: 'percent', amountCents: 0, percent: 100 },
+    { ...makeTransfer(bank, bills), amountCents: 135_000 },
+    { ...makeTransfer(bank, deposit), amountCents: 60_000 },
+    { ...makeTransfer(bank, investment), amountCents: 30_000 },
   ];
-  if (commit({ nodes: [salary, bank, bills, deposit], transfers }, { kind: 'node', id: bank.id }, 'Scenario di esempio caricato.')) {
-    viewport.scrollTo(0, 0);
-  }
+  commit({ nodes: [salary, bank, bills, deposit, investment], transfers }, { kind: 'node', id: bank.id }, 'Scenario di esempio caricato.');
+  requestAnimationFrame(fitView);
 });
 
-const simulationButton = get('open-simulation');
-simulationButton.addEventListener('click', () => simulation.showModal());
+get('open-simulation').addEventListener('click', () => simulation.showModal());
 get('close-simulation').addEventListener('click', () => simulation.close());
-simulation.addEventListener('close', () => simulationButton.focus());
-
-simulationForm.addEventListener('submit', (event) => {
+get('simulation-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  const duration = Number(new FormData(simulationForm).get('months'));
-  try {
-    simulateBoard(board, duration);
-    horizon = duration;
-    projectionMonth.value = '';
-    render();
-  } catch (error) {
-    get('simulation-status').textContent = error.message;
+  horizon = Number(new FormData(event.currentTarget).get('months'));
+  render();
+});
+get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon), Number(get('projection-month').value)));
+
+document.addEventListener('keydown', (event) => {
+  if (event.target.matches('input, select, textarea') || quickEditor.matches(':popover-open')) return;
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+    event.preventDefault();
+    event.shiftKey ? redo() : undo();
+  } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+    event.preventDefault();
+    redo();
+  } else if (event.key === 'Delete' || event.key === 'Backspace') {
+    event.preventDefault();
+    deleteSelection();
+  } else if (event.key === 'Escape') {
+    viewport.classList.remove('connect-mode');
+    connectFrom = null;
+    updatePanels();
   }
 });
 
-projectionMonth.addEventListener('change', () => {
-  drawProjection(simulateBoard(board, horizon), Number(projectionMonth.value));
-});
-
+canvas.style.width = world.width + 'px';
+canvas.style.height = world.height + 'px';
 render();
+if (!localStorage.getItem(cameraKey)) requestAnimationFrame(fitView);

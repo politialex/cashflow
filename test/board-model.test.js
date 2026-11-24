@@ -39,7 +39,7 @@ test('applies external flows and then distributes same-month credits across mult
   assert.deepEqual(board, original);
 
   board.transfers.reverse();
-  assert.equal(simulateBoard(board, 1)[0].nodes[2].balance, 700);
+  assert.equal(simulateBoard(board, 1)[0].nodes[2].balance, 875);
 });
 
 test('evaluates each edge once in cyclic graphs and rounds percentage transfers to cents', () => {
@@ -138,7 +138,7 @@ test('rejects invalid limits and malformed graphs', () => {
   }
 });
 
-test('rejects accumulated flows beyond the safe-integer limit', () => {
+test('keeps large cyclic flow totals precise after automatic ordering', () => {
   const board = {
     nodes: [node('a', { monthlyInCents: 999_999_999 }), node('b')],
     transfers: Array.from({ length: 50 }, (_, index) => {
@@ -147,5 +147,7 @@ test('rejects accumulated flows beyond the safe-integer limit', () => {
     }),
   };
 
-  assert.throws(() => simulateBoard(board, 1), /precisione/);
+  const [period] = simulateBoard(board, 1);
+  assert.ok(period.nodes.every(({ inflow, outflow, balance }) =>
+    [inflow, outflow, balance].every(Number.isSafeInteger)));
 });
