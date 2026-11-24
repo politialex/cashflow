@@ -1,14 +1,14 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 
-const directory = process.argv[2] === 'dist' ? './dist/' : './public/';
+const directory = process.argv[2] === 'dist' ? './dist/' : './';
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '127.0.0.1';
 const resources = new Map([
   ['/', ['index.html', 'text/html']],
-  ['/styles.css', ['styles.css', 'text/css']],
-  ['/app.js', ['app.js', 'text/javascript']],
-  ['/model.js', ['model.js', 'text/javascript']],
+  ['/public/styles.css', ['public/styles.css', 'text/css']],
+  ['/public/app.js', ['public/app.js', 'text/javascript']],
+  ['/public/model.js', ['public/model.js', 'text/javascript']],
 ]);
 
 const server = createServer(async (request, response) => {

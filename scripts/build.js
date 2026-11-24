@@ -1,6 +1,7 @@
 import { copyFile, mkdir } from 'node:fs/promises';
 
-await mkdir(new URL('../dist/', import.meta.url), { recursive: true });
-for (const file of ['index.html', 'styles.css', 'app.js', 'model.js']) {
-  await copyFile(new URL('../public/' + file, import.meta.url), new URL('../dist/' + file, import.meta.url));
+const root = new URL('../', import.meta.url);
+await mkdir(new URL('dist/public/', root), { recursive: true });
+for (const file of ['.nojekyll', 'index.html', 'public/styles.css', 'public/app.js', 'public/model.js']) {
+  await copyFile(new URL(file, root), new URL('dist/' + file, root));
 }

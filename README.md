@@ -24,3 +24,7 @@ npm run build
 ```
 
 La build copia gli asset statici in `dist/`. Per verificare quella versione, arresta il server di sviluppo e avvia `npm start -- dist`. Il server accetta le variabili facoltative `HOST` e `PORT`.
+
+## GitHub Pages
+
+I file dell’app possono essere serviti direttamente da GitHub Pages. Nelle impostazioni **Pages** del repository, seleziona **Deploy from a branch** e usa `main` con la cartella `/ (root)`. I percorsi relativi degli asset supportano la pubblicazione sotto `/cashflow/`.
