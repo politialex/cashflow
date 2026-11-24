@@ -10,7 +10,7 @@ const resources = new Map([
   ['/', ['index.html', 'text/html']],
   ['/public/styles.css', ['public/styles.css', 'text/css']],
   ['/public/app.js', ['public/app.js', 'text/javascript']],
-  ['/public/model.js', ['public/model.js', 'text/javascript']],
+  ['/public/board-model.js', ['public/board-model.js', 'text/javascript']],
 ]);
 
 const server = createServer(async (request, response) => {

@@ -1,8 +1,27 @@
 # Cashflow Studio
 
-Cashflow Studio è un registro personale di entrate e uscite in euro. La dashboard mostra il saldo complessivo, i totali del mese selezionato e un grafico di entrate e uscite per i sei mesi che terminano con quello selezionato.
+Cashflow Studio è una board per disegnare i propri flussi finanziari e simulare la disponibilità sui conti nei mesi successivi. Importi e tassi sono ipotesi inserite dall’utente. L’app lavora in euro e salva la board nel browser.
 
-## Avvio locale
+[Apri Cashflow Studio](https://politialex.github.io/cashflow/)
+
+## Costruisci uno scenario
+
+1. Aggiungi un nodo per ciascun elemento che vuoi seguire, come un conto, un deposito, un investimento, una riserva di liquidità o una fonte di reddito. Imposta saldo iniziale, entrate e uscite mensili esterne e rendimento annuo. Sposta i nodi con il mouse oppure selezionali e usa le frecce.
+2. Aggiungi un collegamento per ogni trasferimento interno. Scegli origine, destinazione, valore fisso o percentuale e frequenza. L’ordine nell’elenco determina quando il trasferimento viene applicato rispetto agli altri.
+3. Apri la simulazione, scegli un orizzonte da 1 a 120 mesi e usa il selettore per leggere il risultato di ogni mese. La board mostra entrate, uscite e disponibilità al termine del primo mese.
+
+Lo scenario di esempio separa lo stipendio tra un conto principale, un conto per le spese e un deposito con rendimento annuo del 2%.
+
+### Regole della simulazione
+
+- Ogni mese il motore parte dal saldo del mese precedente, registra i flussi esterni e applica i trasferimenti nell’ordine dell’elenco. Ogni collegamento esegue al massimo un trasferimento nel mese, anche se la board contiene un ciclo.
+- La percentuale si applica agli accrediti ricevuti dal nodo nel mese fino a quel punto. Per ripartire uno stipendio, metti il relativo accredito prima dei trasferimenti che lo usano. Il trasferimento annuale parte nei mesi 1, 13, 25 e così via. Il trasferimento una tantum avviene nel mese 1.
+- Dopo i flussi, il saldo positivo riceve il rendimento mensile composto equivalente al tasso annuo. Gli importi vengono arrotondati al centesimo. I trasferimenti fissi possono generare saldi negativi, visibili nella board e nella simulazione.
+- Imposte, commissioni, volatilità e conversioni di valuta richiedono ipotesi esterne. Le categorie dei nodi aiutano a organizzare lo scenario e usano le stesse regole di calcolo.
+
+La v2 salva una board separata. Le registrazioni della v1 restano nel browser e possono essere consultate eseguendo il pacchetto v1 sullo stesso indirizzo da cui erano state inserite.
+
+## Avvio locale e verifiche
 
 Dalla radice del repository, con Node.js 24 o successivo e npm:
 
@@ -11,11 +30,7 @@ npm ci
 npm start
 ```
 
-Apri http://127.0.0.1:3000. Registra un movimento con data, descrizione, categoria e importo. Puoi modificarlo o eliminarlo dalla tabella del mese. L’importo accetta la virgola o il punto come separatore decimale.
-
-L’app salva i dati nel browser per l’indirizzo da cui viene aperta. I dati sono disponibili dopo il ricaricamento della pagina e vengono rimossi se cancelli i dati del sito. L’app non richiede un account o un database.
-
-## Verifica e build
+Apri http://127.0.0.1:3000. Il server accetta le variabili facoltative `HOST` e `PORT`.
 
 ```sh
 npm run lint
@@ -23,20 +38,16 @@ npm test
 npm run build
 ```
 
-La build copia gli asset statici in `dist/`. Per verificare quella versione, arresta il server di sviluppo e avvia `npm start -- dist`. Il server accetta le variabili facoltative `HOST` e `PORT`.
+La build produce gli asset statici in `dist/`. Per verificarla, avvia `npm start -- dist` dopo aver arrestato il server di sviluppo.
 
-## GitHub Pages
+## Pubblicazione
 
-I file dell’app possono essere serviti direttamente da GitHub Pages. Nelle impostazioni **Pages** del repository, seleziona **Deploy from a branch** e usa `main` con la cartella `/ (root)`. I percorsi relativi degli asset supportano la pubblicazione sotto `/cashflow/`.
+GitHub Pages serve `main` dalla radice del repository. Il workflow di release parte dal tag corrispondente alla versione npm. La pagina [Releases](https://github.com/politialex/cashflow/releases) offre uno ZIP per un server statico e un pacchetto npm eseguibile.
 
-## Release e pacchetto npm
-
-Il tag corrispondente alla versione del pacchetto (per esempio `v1.0.0`) avvia il workflow di release. La pagina [Releases](https://github.com/politialex/cashflow/releases) offre uno ZIP con il sito statico e il pacchetto npm in formato `.tgz`.
-
-Con Node.js 24 o successivo, puoi avviare il pacchetto di una release scaricando il file `.tgz` ed eseguendo:
+Per avviare la v2.0.0 scarica il file `.tgz` della release ed esegui:
 
 ```sh
-npm exec --package=./politialex-cashflow-studio-1.0.0.tgz -- cashflow-studio
+npm exec --package=./politialex-cashflow-studio-2.0.0.tgz -- cashflow-studio
 ```
 
-Apri http://127.0.0.1:3000. Il pacchetto è pubblicato anche nel registro npm di GitHub Packages con il nome `@politialex/cashflow-studio`. Per installarlo dal registro GitHub serve un account autorizzato alla lettura del pacchetto e configurato per `https://npm.pkg.github.com`.
+Il pacchetto è disponibile anche in [GitHub Packages](https://github.com/politialex/cashflow/pkgs/npm/cashflow-studio) nell’ambito `@politialex`. Per installarlo dal registro serve un account autorizzato e configurato per `https://npm.pkg.github.com`.

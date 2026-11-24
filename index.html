@@ -3,148 +3,195 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#142920">
+  <meta name="theme-color" content="#142a24">
   <title>Cashflow Studio</title>
   <link rel="stylesheet" href="./public/styles.css">
   <script src="./public/app.js" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Vai al contenuto</a>
-  <aside class="sidebar">
-    <a class="brand" href="#panoramica">
+  <header class="site-header">
+    <a class="brand" href="#main-content">
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <span>Cashflow <span class="brand-subtitle">Studio</span></span>
     </a>
-    <nav aria-label="Navigazione">
-      <a href="#panoramica"><span aria-hidden="true">◫</span> Panoramica</a>
-      <a href="#movimenti"><span aria-hidden="true">≡</span> Movimenti</a>
-      <a href="#nuovo-movimento"><span aria-hidden="true">+</span> Aggiungi movimento</a>
-    </nav>
-  </aside>
+    <p>Modella i tuoi flussi di cassa</p>
+  </header>
 
   <main id="main-content" tabindex="-1">
-    <header class="page-header" id="panoramica">
-      <div>
-        <h1>Panoramica</h1>
-        <p>Entrate, uscite e saldo in un unico posto.</p>
-      </div>
-      <div class="month-field">
-        <label for="selected-month">Mese di riferimento</label>
-        <input id="selected-month" type="month" min="0001-01" max="9999-12" required>
-      </div>
-    </header>
-
-    <section class="metrics" aria-label="Riepilogo finanziario">
-      <article class="metric metric-primary">
-        <h2>Saldo totale</h2>
-        <strong data-metric="balance">0,00&nbsp;€</strong>
-        <p>Tutti i movimenti</p>
-      </article>
-      <article class="metric">
-        <h2>Entrate</h2>
-        <strong data-metric="income">0,00&nbsp;€</strong>
-        <p>Nel mese selezionato</p>
-      </article>
-      <article class="metric">
-        <h2>Uscite</h2>
-        <strong data-metric="expenses">0,00&nbsp;€</strong>
-        <p>Nel mese selezionato</p>
-      </article>
-      <article class="metric">
-        <h2>Saldo del mese</h2>
-        <strong data-metric="monthlyNet">0,00&nbsp;€</strong>
-        <p>Entrate meno uscite</p>
-      </article>
-    </section>
-
-    <div class="workspace-grid">
-      <section class="panel trend-panel" aria-labelledby="trend-heading">
-        <header class="panel-heading">
-          <div>
-            <h2 id="trend-heading">Andamento</h2>
-            <p>Entrate e uscite negli ultimi sei mesi.</p>
-          </div>
-          <ul class="legend" aria-label="Legenda">
-            <li><span class="legend-income" aria-hidden="true"></span> Entrate</li>
-            <li><span class="legend-expense" aria-hidden="true"></span> Uscite</li>
-          </ul>
-        </header>
-        <div id="trend" class="trend" aria-label="Andamento mensile"></div>
-      </section>
-
-      <section class="panel entry-panel" id="nuovo-movimento" aria-labelledby="form-heading">
-        <header class="panel-heading">
-          <h2 id="form-heading">Nuovo movimento</h2>
-        </header>
-        <form id="transaction-form">
-          <div class="form-grid">
-            <div class="field">
-              <label for="type">Tipo</label>
-              <select id="type" name="type" required>
-                <option value="expense">Uscita</option>
-                <option value="income">Entrata</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="amount">Importo (€)</label>
-              <input id="amount" name="amount" type="text" inputmode="decimal" placeholder="0,00" required>
-            </div>
-            <div class="field field-wide">
-              <label for="description">Descrizione</label>
-              <input id="description" name="description" type="text" placeholder="Es. Spesa settimanale" maxlength="120" required>
-            </div>
-            <div class="field">
-              <label for="category">Categoria</label>
-              <input id="category" name="category" type="text" list="category-suggestions" placeholder="Es. Alimentari" maxlength="40" required>
-              <datalist id="category-suggestions">
-                <option value="Alimentari"></option>
-                <option value="Casa"></option>
-                <option value="Trasporti"></option>
-                <option value="Salute"></option>
-                <option value="Svago"></option>
-                <option value="Stipendio"></option>
-                <option value="Altro"></option>
-              </datalist>
-            </div>
-            <div class="field">
-              <label for="date">Data</label>
-              <input id="date" name="date" type="date" min="0001-01-01" max="9999-12-31" required>
-            </div>
-          </div>
-          <div class="form-actions">
-            <button id="submit-transaction" class="button-primary" type="submit">Salva movimento</button>
-            <button id="cancel-edit" class="button-secondary" type="button" hidden>Annulla</button>
-          </div>
-          <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
-        </form>
-      </section>
-    </div>
-
-    <section class="panel transactions-panel" id="movimenti" aria-labelledby="transactions-heading">
-      <header class="panel-heading">
+    <section class="workspace" aria-labelledby="board-heading">
+      <div class="section-heading">
         <div>
-          <h2 id="transactions-heading">Movimenti</h2>
-          <p>Operazioni del mese selezionato.</p>
+          <h1 id="board-heading">Mappa dei flussi</h1>
+          <p>Organizza i conti, collega i nodi e proietta i saldi.</p>
         </div>
-      </header>
-      <div class="table-scroll" role="region" aria-label="Tabella dei movimenti" tabindex="0">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Data</th>
-              <th scope="col">Descrizione</th>
-              <th scope="col">Categoria</th>
-              <th scope="col">Importo</th>
-              <th scope="col">Azioni</th>
-            </tr>
-          </thead>
-          <tbody id="transaction-rows"></tbody>
-        </table>
+        <a id="open-simulation" class="button primary-button" href="#simulation">Simula flussi <span aria-hidden="true">↓</span></a>
       </div>
-      <p id="empty-state" class="empty-state">Nessun movimento per questo mese.</p>
+
+      <div class="board-shell">
+        <div class="toolbar" aria-label="Azioni della mappa">
+          <button id="add-node" class="primary-button" type="button"><span aria-hidden="true">+</span> Nodo</button>
+          <button id="add-transfer" type="button"><span aria-hidden="true">→</span> Trasferimento</button>
+          <button id="load-example" type="button">Carica esempio</button>
+        </div>
+
+        <div class="board-layout">
+          <div class="board-surface">
+            <div id="board-viewport" class="board-viewport" role="region" aria-label="Mappa dei flussi scorrevole" tabindex="0">
+              <div id="board-canvas" class="board-canvas">
+                <svg id="board-edges" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"></svg>
+                <div id="board-nodes" role="group" aria-label="Nodi della mappa"></div>
+              </div>
+              <div id="board-empty" class="board-empty">
+                <strong>La mappa è vuota</strong>
+                <p>Aggiungi un nodo o carica l’esempio per iniziare.</p>
+              </div>
+            </div>
+            <div class="board-caption">
+              <span><i class="legend-node" aria-hidden="true"></i>Nodo</span>
+              <span><i class="legend-edge" aria-hidden="true"></i>Trasferimento</span>
+              <span>Importi sui nodi proiettati al mese 1.</span>
+              <span class="keyboard-help">Usa i tasti freccia per spostare il nodo selezionato.</span>
+              <p id="board-status" role="status"></p>
+            </div>
+          </div>
+
+          <aside id="inspector" class="inspector" aria-labelledby="inspector-heading">
+            <h2 id="inspector-heading">Dettagli</h2>
+            <p id="inspector-empty" class="muted">Seleziona un nodo o un trasferimento per modificarlo.</p>
+
+            <form id="node-form" class="editor" hidden>
+              <div class="field">
+                <label for="node-name">Nome</label>
+                <input id="node-name" name="name" type="text" maxlength="60" required>
+              </div>
+              <div class="field">
+                <label for="node-type">Tipo</label>
+                <select id="node-type" name="type" required>
+                  <option value="bank">Conto bancario</option>
+                  <option value="deposit">Deposito</option>
+                  <option value="investment">Investimento</option>
+                  <option value="savings">Risparmio</option>
+                  <option value="cash">Contanti</option>
+                  <option value="source">Fonte di entrate</option>
+                  <option value="expense">Spesa</option>
+                  <option value="other">Altro</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="node-opening">Saldo iniziale (€)</label>
+                <input id="node-opening" name="opening" type="text" inputmode="decimal" required>
+              </div>
+              <div class="field">
+                <label for="node-monthly-in">Entrate esterne mensili (€)</label>
+                <input id="node-monthly-in" name="monthlyIn" type="text" inputmode="decimal" required>
+              </div>
+              <div class="field">
+                <label for="node-monthly-out">Uscite esterne mensili (€)</label>
+                <input id="node-monthly-out" name="monthlyOut" type="text" inputmode="decimal" required>
+              </div>
+              <div class="field">
+                <label for="node-rate">Rendimento annuo (%)</label>
+                <input id="node-rate" name="annualRate" type="text" inputmode="decimal" required>
+              </div>
+              <section class="summary" aria-labelledby="node-summary-heading">
+                <h3 id="node-summary-heading">Disponibilità e flussi al mese 1</h3>
+                <div id="node-summary" class="form-summary"></div>
+              </section>
+              <div class="editor-actions">
+                <button class="primary-button" type="submit">Salva nodo</button>
+                <button id="delete-node" class="danger-button" type="button">Elimina nodo</button>
+              </div>
+            </form>
+
+            <form id="transfer-form" class="editor" hidden>
+              <div class="field">
+                <label for="transfer-from">Da</label>
+                <select id="transfer-from" name="from" required></select>
+              </div>
+              <div class="field">
+                <label for="transfer-to">A</label>
+                <select id="transfer-to" name="to" required></select>
+              </div>
+              <div class="field">
+                <label for="transfer-mode">Modalità</label>
+                <select id="transfer-mode" name="mode" aria-describedby="percent-help" required>
+                  <option value="fixed">Importo fisso (€)</option>
+                  <option value="percent">Percentuale (%)</option>
+                </select>
+                <p id="percent-help" class="field-help">La percentuale si applica agli accrediti già ricevuti nel mese dal nodo di partenza, seguendo l’ordine dei trasferimenti.</p>
+              </div>
+              <div class="field">
+                <label for="transfer-value">Valore</label>
+                <input id="transfer-value" name="value" type="text" inputmode="decimal" required>
+              </div>
+              <div class="field">
+                <label for="transfer-frequency">Frequenza</label>
+                <select id="transfer-frequency" name="frequency" required>
+                  <option value="monthly">Mensile</option>
+                  <option value="annual">Annuale</option>
+                  <option value="once">Una volta</option>
+                </select>
+              </div>
+              <div class="editor-actions">
+                <button class="primary-button" type="submit">Salva trasferimento</button>
+                <button id="delete-transfer" class="danger-button" type="button">Elimina</button>
+                <button id="transfer-up" type="button">Sposta su</button>
+                <button id="transfer-down" type="button">Sposta giù</button>
+              </div>
+            </form>
+
+            <div class="transfer-section">
+              <h3 id="transfer-heading">Ordine dei trasferimenti</h3>
+              <div id="transfer-list" class="transfer-list" role="group" aria-labelledby="transfer-heading"></div>
+            </div>
+          </aside>
+        </div>
+      </div>
     </section>
 
-    <footer>I movimenti sono salvati in questo browser.</footer>
+    <section id="simulation" class="simulation" aria-labelledby="simulation-heading">
+      <div class="section-heading">
+        <div>
+          <h2 id="simulation-heading">Simulazione</h2>
+          <p>Stima come cambiano i saldi dei nodi nel tempo.</p>
+        </div>
+        <form id="simulation-form" class="simulation-form">
+          <div class="field">
+            <label for="projection-length">Orizzonte in mesi</label>
+            <input id="projection-length" name="months" type="number" min="1" max="120" value="12" required>
+          </div>
+          <button class="primary-button" type="submit">Calcola</button>
+        </form>
+      </div>
+
+      <div class="projection">
+        <div class="projection-header">
+          <p id="simulation-status" class="muted" role="status"></p>
+          <div class="field">
+            <label for="projection-month">Mese della proiezione</label>
+            <select id="projection-month" disabled><option value="">—</option></select>
+          </div>
+        </div>
+        <div class="table-scroll" role="region" aria-label="Risultati della simulazione" tabindex="0">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Nodo</th>
+                <th scope="col">Saldo iniziale</th>
+                <th scope="col">Entrate</th>
+                <th scope="col">Uscite</th>
+                <th scope="col">Rendimento</th>
+                <th scope="col">Saldo finale</th>
+              </tr>
+            </thead>
+            <tbody id="projection-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <footer>La mappa è salvata in questo browser.</footer>
   </main>
 </body>
 </html>

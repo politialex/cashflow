@@ -1,6 +1,6 @@
 {
   "name": "@politialex/cashflow-studio",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -16,7 +16,7 @@
     "eslint": "10.0.3",
     "globals": "17.4.0"
   },
-  "description": "Registro personale di entrate e uscite in euro",
+  "description": "Board per modellare flussi di denaro e simulare saldi futuri",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/politialex/cashflow.git"
