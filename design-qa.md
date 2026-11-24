@@ -27,3 +27,11 @@ Canvas finanziario desktop ispirato ai riferimenti allegati: superficie scura pu
 ## Esito
 
 final result: passed
+
+## Direzione Framer / Figma — v3.2.0
+
+- Palette riallineata al riferimento con canvas nero neutro, pannelli grafite e accento blu.
+- Chrome compattato a 48 px, pannelli più densi e controlli con raggi ridotti.
+- Rimossi gli effetti decorativi verdi e ridotte le ombre per ottenere un editor più tecnico.
+- Nodi e collegamenti mantengono la codifica semantica dei tipi finanziari.
+- Stato focus, selezione, modali e controlli flottanti condividono lo stesso linguaggio visivo.
