@@ -28,6 +28,14 @@ Canvas finanziario desktop ispirato ai riferimenti allegati: superficie scura pu
 
 final result: passed
 
+## Quick wins — v3.3.0
+
+- Noto Sans è applicato ai testi e Noto Sans Mono a importi, percentuali e valori tabellari.
+- Le frecce mostrano un singolo importo assoluto; la direzione è affidata alla punta.
+- I raggi applicativi sono uniformati a 4 px, preservando soltanto gli indicatori circolari.
+- I saldi positivi e negativi usano colori semantici accessibili e conservano il segno.
+- La board finita è distinguibile dall'area esterna e le micro-transizioni rispettano `prefers-reduced-motion`.
+
 ## Nitidezza e nodi duotone — v3.2.1
 
 - Entrata usa fondo verde profondo, bordo verde medio e testo chiaro ad alto contrasto.

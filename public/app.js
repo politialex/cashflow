@@ -301,7 +301,7 @@ function drawEdges(firstMonth, temporaryPoint = null) {
     group.append(svgElement('path', { class: 'board-edge', d, 'marker-end': 'url(#flow-arrow)' }));
     const amount = transferAmount(transfer, firstMonth);
     const label = svgElement('text', { class: 'edge-label', x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 10, 'text-anchor': 'middle' });
-    label.textContent = '−' + money(amount) + '  →  +' + money(amount);
+    label.textContent = money(Math.abs(amount));
     group.append(label);
     group.addEventListener('click', (event) => { event.stopPropagation(); select('transfer', transfer.id); });
     group.addEventListener('dblclick', (event) => { event.stopPropagation(); openQuickEditor('transfer', transfer.id, event.clientX, event.clientY); });
@@ -395,11 +395,9 @@ function renderBoard(firstMonth) {
     card.setAttribute('aria-selected', String(selected?.kind === 'node' && selected.id === node.id));
     card.style.left = node.x + 'px';
     card.style.top = node.y + 'px';
-    card.append(
-      createText('node-type', types[node.type]),
-      createText('node-title', node.name),
-      createText('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node)))),
-    );
+    const balance = createText('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node))));
+    if (account && result.balance !== 0) balance.classList.add(result.balance > 0 ? 'positive' : 'negative');
+    card.append(createText('node-type', types[node.type]), createText('node-title', node.name), balance);
     if (account) {
       card.append(createText('node-caption', 'Disponibilità'));
       if (node.annualRate) card.append(createText('node-rate', percent.format(node.annualRate) + '% annuo'));
@@ -455,7 +453,7 @@ function renderInspector(firstMonth) {
       const amount = document.createElement('dd');
       term.textContent = label;
       amount.textContent = money(value);
-      if (value < 0) amount.className = 'negative';
+      if (label === 'Disponibilità' && value !== 0) amount.className = value > 0 ? 'positive' : 'negative';
       details.append(term, amount);
     }
     get('node-summary').replaceChildren(details);
