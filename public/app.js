@@ -170,10 +170,13 @@ function screenToWorld(clientX, clientY) {
 }
 
 function applyCamera() {
-  canvas.style.transform = 'translate(' + camera.x + 'px,' + camera.y + 'px) scale(' + camera.zoom + ')';
+  const displayX = Math.round(camera.x);
+  const displayY = Math.round(camera.y);
+  canvas.style.zoom = camera.zoom;
+  canvas.style.transform = 'translate(' + displayX / camera.zoom + 'px,' + displayY / camera.zoom + 'px)';
   viewport.style.setProperty('--grid-screen', grid * camera.zoom + 'px');
-  viewport.style.setProperty('--grid-x', camera.x % (grid * camera.zoom) + 'px');
-  viewport.style.setProperty('--grid-y', camera.y % (grid * camera.zoom) + 'px');
+  viewport.style.setProperty('--grid-x', displayX % (grid * camera.zoom) + 'px');
+  viewport.style.setProperty('--grid-y', displayY % (grid * camera.zoom) + 'px');
   get('zoom-level').value = Math.round(camera.zoom * 100) + '%';
   save();
 }

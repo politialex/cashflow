@@ -28,6 +28,13 @@ Canvas finanziario desktop ispirato ai riferimenti allegati: superficie scura pu
 
 final result: passed
 
+## Nitidezza e nodi duotone — v3.2.1
+
+- Entrata usa fondo verde profondo, bordo verde medio e testo chiaro ad alto contrasto.
+- Spesa usa fondo rosso profondo, bordo rosso medio e testo chiaro ad alto contrasto.
+- Lo zoom della board usa il layout zoom del browser al posto della rasterizzazione `transform: scale()`.
+- Le coordinate visive della camera sono arrotondate ai pixel interi per mantenere nitidi testo e bordi.
+
 ## Direzione Framer / Figma — v3.2.0
 
 - Palette riallineata al riferimento con canvas nero neutro, pannelli grafite e accento blu.

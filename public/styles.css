@@ -98,7 +98,7 @@ h3 { font-size: .76rem; }
 }
 .board-viewport.is-panning { cursor: grabbing; }
 .board-viewport.connect-mode { cursor: crosshair; }
-.board-canvas { position: absolute; top: 0; left: 0; width: 3200px; height: 2200px; transform-origin: 0 0; will-change: transform; }
+.board-canvas { position: absolute; top: 0; left: 0; width: 3200px; height: 2200px; transform-origin: 0 0; }
 #board-edges, #board-nodes { position: absolute; inset: 0; width: 100%; height: 100%; }
 #board-edges { overflow: visible; }
 #board-nodes { pointer-events: none; }
@@ -132,6 +132,12 @@ h3 { font-size: .76rem; }
 .account-node { width: 240px; height: 124px; grid-template-columns: minmax(0, 1fr) auto; padding: 14px 16px; }
 .compact-node { width: 176px; height: 74px; padding: 10px 14px; border-radius: 7px; }
 .board-node[data-type="bank"] { --node-color: #63b4ff; }.board-node[data-type="deposit"] { --node-color: #5de1d2; }.board-node[data-type="investment"] { --node-color: #b794ff; }.board-node[data-type="savings"] { --node-color: #8ede7c; }.board-node[data-type="cash"] { --node-color: #e5c66c; }.board-node[data-type="source"] { --node-color: #73d7a2; }.board-node[data-type="expense"] { --node-color: #ff896f; }
+.board-node[data-type="source"] { color: #f3fff9; background: #163b31; border-color: #2b725e; }
+.board-node[data-type="source"] .node-type,
+.board-node[data-type="source"] .node-caption { color: #afd8c9; }
+.board-node[data-type="expense"] { color: #fff6f4; background: #43231f; border-color: #824139; }
+.board-node[data-type="expense"] .node-type,
+.board-node[data-type="expense"] .node-caption { color: #e5b9b2; }
 .board-node[aria-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 12px 30px #000b; }
 .node-type { grid-column: 1 / -1; margin-bottom: 4px; color: var(--muted); font-size: .63rem; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
 .node-title { min-width: 0; overflow: hidden; font-size: .9rem; font-weight: 760; letter-spacing: -.012em; text-overflow: ellipsis; white-space: nowrap; }
