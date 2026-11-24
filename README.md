@@ -28,3 +28,15 @@ La build copia gli asset statici in `dist/`. Per verificare quella versione, arr
 ## GitHub Pages
 
 I file dell’app possono essere serviti direttamente da GitHub Pages. Nelle impostazioni **Pages** del repository, seleziona **Deploy from a branch** e usa `main` con la cartella `/ (root)`. I percorsi relativi degli asset supportano la pubblicazione sotto `/cashflow/`.
+
+## Release e pacchetto npm
+
+Il tag corrispondente alla versione del pacchetto (per esempio `v1.0.0`) avvia il workflow di release. La pagina [Releases](https://github.com/politialex/cashflow/releases) offre uno ZIP con il sito statico e il pacchetto npm in formato `.tgz`.
+
+Con Node.js 24 o successivo, puoi avviare il pacchetto di una release scaricando il file `.tgz` ed eseguendo:
+
+```sh
+npm exec --package=./politialex-cashflow-studio-1.0.0.tgz -- cashflow-studio
+```
+
+Apri http://127.0.0.1:3000. Il pacchetto è pubblicato anche nel registro npm di GitHub Packages con il nome `@politialex/cashflow-studio`. Per installarlo dal registro GitHub serve un account autorizzato alla lettura del pacchetto e configurato per `https://npm.pkg.github.com`.

@@ -1,9 +1,10 @@
 {
-  "name": "cashflow-studio",
+  "name": "@politialex/cashflow-studio",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node server.js",
     "build": "node scripts/build.js",
@@ -14,5 +15,21 @@
     "@eslint/js": "10.0.1",
     "eslint": "10.0.3",
     "globals": "17.4.0"
+  },
+  "description": "Registro personale di entrate e uscite in euro",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/politialex/cashflow.git"
+  },
+  "files": [
+    "index.html",
+    "public/",
+    "server.js"
+  ],
+  "bin": {
+    "cashflow-studio": "./server.js"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   }
 }

@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 
