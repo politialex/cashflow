@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#142920">
+  <title>Cashflow Studio</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Vai al contenuto</a>
+  <aside class="sidebar">
+    <a class="brand" href="#panoramica">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>Cashflow <span class="brand-subtitle">Studio</span></span>
+    </a>
+    <nav aria-label="Navigazione">
+      <a href="#panoramica"><span aria-hidden="true">◫</span> Panoramica</a>
+      <a href="#movimenti"><span aria-hidden="true">≡</span> Movimenti</a>
+      <a href="#nuovo-movimento"><span aria-hidden="true">+</span> Aggiungi movimento</a>
+    </nav>
+  </aside>
+
+  <main id="main-content" tabindex="-1">
+    <header class="page-header" id="panoramica">
+      <div>
+        <h1>Panoramica</h1>
+        <p>Entrate, uscite e saldo in un unico posto.</p>
+      </div>
+      <div class="month-field">
+        <label for="selected-month">Mese di riferimento</label>
+        <input id="selected-month" type="month" min="0001-01" max="9999-12" required>
+      </div>
+    </header>
+
+    <section class="metrics" aria-label="Riepilogo finanziario">
+      <article class="metric metric-primary">
+        <h2>Saldo totale</h2>
+        <strong data-metric="balance">0,00&nbsp;€</strong>
+        <p>Tutti i movimenti</p>
+      </article>
+      <article class="metric">
+        <h2>Entrate</h2>
+        <strong data-metric="income">0,00&nbsp;€</strong>
+        <p>Nel mese selezionato</p>
+      </article>
+      <article class="metric">
+        <h2>Uscite</h2>
+        <strong data-metric="expenses">0,00&nbsp;€</strong>
+        <p>Nel mese selezionato</p>
+      </article>
+      <article class="metric">
+        <h2>Saldo del mese</h2>
+        <strong data-metric="monthlyNet">0,00&nbsp;€</strong>
+        <p>Entrate meno uscite</p>
+      </article>
+    </section>
+
+    <div class="workspace-grid">
+      <section class="panel trend-panel" aria-labelledby="trend-heading">
+        <header class="panel-heading">
+          <div>
+            <h2 id="trend-heading">Andamento</h2>
+            <p>Entrate e uscite negli ultimi sei mesi.</p>
+          </div>
+          <ul class="legend" aria-label="Legenda">
+            <li><span class="legend-income" aria-hidden="true"></span> Entrate</li>
+            <li><span class="legend-expense" aria-hidden="true"></span> Uscite</li>
+          </ul>
+        </header>
+        <div id="trend" class="trend" aria-label="Andamento mensile"></div>
+      </section>
+
+      <section class="panel entry-panel" id="nuovo-movimento" aria-labelledby="form-heading">
+        <header class="panel-heading">
+          <h2 id="form-heading">Nuovo movimento</h2>
+        </header>
+        <form id="transaction-form">
+          <div class="form-grid">
+            <div class="field">
+              <label for="type">Tipo</label>
+              <select id="type" name="type" required>
+                <option value="expense">Uscita</option>
+                <option value="income">Entrata</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="amount">Importo (€)</label>
+              <input id="amount" name="amount" type="text" inputmode="decimal" placeholder="0,00" required>
+            </div>
+            <div class="field field-wide">
+              <label for="description">Descrizione</label>
+              <input id="description" name="description" type="text" placeholder="Es. Spesa settimanale" maxlength="120" required>
+            </div>
+            <div class="field">
+              <label for="category">Categoria</label>
+              <input id="category" name="category" type="text" list="category-suggestions" placeholder="Es. Alimentari" maxlength="40" required>
+              <datalist id="category-suggestions">
+                <option value="Alimentari"></option>
+                <option value="Casa"></option>
+                <option value="Trasporti"></option>
+                <option value="Salute"></option>
+                <option value="Svago"></option>
+                <option value="Stipendio"></option>
+                <option value="Altro"></option>
+              </datalist>
+            </div>
+            <div class="field">
+              <label for="date">Data</label>
+              <input id="date" name="date" type="date" min="0001-01-01" max="9999-12-31" required>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button id="submit-transaction" class="button-primary" type="submit">Salva movimento</button>
+            <button id="cancel-edit" class="button-secondary" type="button" hidden>Annulla</button>
+          </div>
+          <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+    </div>
+
+    <section class="panel transactions-panel" id="movimenti" aria-labelledby="transactions-heading">
+      <header class="panel-heading">
+        <div>
+          <h2 id="transactions-heading">Movimenti</h2>
+          <p>Operazioni del mese selezionato.</p>
+        </div>
+      </header>
+      <div class="table-scroll" role="region" aria-label="Tabella dei movimenti" tabindex="0">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Data</th>
+              <th scope="col">Descrizione</th>
+              <th scope="col">Categoria</th>
+              <th scope="col">Importo</th>
+              <th scope="col">Azioni</th>
+            </tr>
+          </thead>
+          <tbody id="transaction-rows"></tbody>
+        </table>
+      </div>
+      <p id="empty-state" class="empty-state">Nessun movimento per questo mese.</p>
+    </section>
+
+    <footer>I movimenti sono salvati in questo browser.</footer>
+  </main>
+</body>
+</html>
