@@ -15,183 +15,182 @@
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <span>Cashflow <span class="brand-subtitle">Studio</span></span>
     </a>
-    <p>Modella i tuoi flussi di cassa</p>
+    <h1 id="board-heading">Mappa dei flussi</h1>
+    <div class="panel-toggles" aria-label="Pannelli">
+      <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
+      <button id="toggle-inspector" type="button" aria-controls="inspector" aria-expanded="false">Dettagli</button>
+    </div>
   </header>
 
   <main id="main-content" tabindex="-1">
     <section class="workspace" aria-labelledby="board-heading">
-      <div class="section-heading">
-        <div>
-          <h1 id="board-heading">Mappa dei flussi</h1>
-          <p>Organizza i conti, collega i nodi e proietta i saldi.</p>
+      <aside id="nodes-panel" class="nodes-panel" aria-labelledby="nodes-heading">
+        <h2 id="nodes-heading">Nodi</h2>
+        <p id="node-list-empty" class="muted">Aggiungi un nodo per iniziare.</p>
+        <div id="node-list" class="node-list" role="group" aria-labelledby="nodes-heading"></div>
+        <div class="transfer-section">
+          <h3 id="transfer-heading">Ordine dei trasferimenti</h3>
+          <div id="transfer-list" class="transfer-list" role="group" aria-labelledby="transfer-heading"></div>
         </div>
-        <a id="open-simulation" class="button primary-button" href="#simulation">Simula flussi <span aria-hidden="true">↓</span></a>
-      </div>
+        <p class="storage-note">La mappa è salvata in questo browser.</p>
+      </aside>
 
-      <div class="board-shell">
-        <div class="toolbar" aria-label="Azioni della mappa">
-          <button id="add-node" class="primary-button" type="button"><span aria-hidden="true">+</span> Nodo</button>
-          <button id="add-transfer" type="button"><span aria-hidden="true">→</span> Trasferimento</button>
-          <button id="load-example" type="button">Carica esempio</button>
-        </div>
-
-        <div class="board-layout">
-          <div class="board-surface">
-            <div id="board-viewport" class="board-viewport" role="region" aria-label="Mappa dei flussi scorrevole" tabindex="0">
-              <div id="board-canvas" class="board-canvas">
-                <svg id="board-edges" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"></svg>
-                <div id="board-nodes" role="group" aria-label="Nodi della mappa"></div>
-              </div>
-              <div id="board-empty" class="board-empty">
-                <strong>La mappa è vuota</strong>
-                <p>Aggiungi un nodo o carica l’esempio per iniziare.</p>
-              </div>
-            </div>
-            <div class="board-caption">
-              <span><i class="legend-node" aria-hidden="true"></i>Nodo</span>
-              <span><i class="legend-edge" aria-hidden="true"></i>Trasferimento</span>
-              <span>Importi sui nodi proiettati al mese 1.</span>
-              <span class="keyboard-help">Usa i tasti freccia per spostare il nodo selezionato.</span>
-              <p id="board-status" role="status"></p>
-            </div>
+      <div class="board-surface">
+        <div id="board-viewport" class="board-viewport" role="region" aria-label="Mappa dei flussi scorrevole" tabindex="0">
+          <div id="board-canvas" class="board-canvas">
+            <svg id="board-edges" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div id="board-nodes" role="group" aria-label="Nodi della mappa"></div>
           </div>
-
-          <aside id="inspector" class="inspector" aria-labelledby="inspector-heading">
-            <h2 id="inspector-heading">Dettagli</h2>
-            <p id="inspector-empty" class="muted">Seleziona un nodo o un trasferimento per modificarlo.</p>
-
-            <form id="node-form" class="editor" hidden>
-              <div class="field">
-                <label for="node-name">Nome</label>
-                <input id="node-name" name="name" type="text" maxlength="60" required>
-              </div>
-              <div class="field">
-                <label for="node-type">Tipo</label>
-                <select id="node-type" name="type" required>
-                  <option value="bank">Conto bancario</option>
-                  <option value="deposit">Deposito</option>
-                  <option value="investment">Investimento</option>
-                  <option value="savings">Risparmio</option>
-                  <option value="cash">Contanti</option>
-                  <option value="source">Fonte di entrate</option>
-                  <option value="expense">Spesa</option>
-                  <option value="other">Altro</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="node-opening">Saldo iniziale (€)</label>
-                <input id="node-opening" name="opening" type="text" inputmode="decimal" required>
-              </div>
-              <div class="field">
-                <label for="node-monthly-in">Entrate esterne mensili (€)</label>
-                <input id="node-monthly-in" name="monthlyIn" type="text" inputmode="decimal" required>
-              </div>
-              <div class="field">
-                <label for="node-monthly-out">Uscite esterne mensili (€)</label>
-                <input id="node-monthly-out" name="monthlyOut" type="text" inputmode="decimal" required>
-              </div>
-              <div class="field">
-                <label for="node-rate">Rendimento annuo (%)</label>
-                <input id="node-rate" name="annualRate" type="text" inputmode="decimal" required>
-              </div>
-              <section class="summary" aria-labelledby="node-summary-heading">
-                <h3 id="node-summary-heading">Disponibilità e flussi al mese 1</h3>
-                <div id="node-summary" class="form-summary"></div>
-              </section>
-              <div class="editor-actions">
-                <button class="primary-button" type="submit">Salva nodo</button>
-                <button id="delete-node" class="danger-button" type="button">Elimina nodo</button>
-              </div>
-            </form>
-
-            <form id="transfer-form" class="editor" hidden>
-              <div class="field">
-                <label for="transfer-from">Da</label>
-                <select id="transfer-from" name="from" required></select>
-              </div>
-              <div class="field">
-                <label for="transfer-to">A</label>
-                <select id="transfer-to" name="to" required></select>
-              </div>
-              <div class="field">
-                <label for="transfer-mode">Modalità</label>
-                <select id="transfer-mode" name="mode" aria-describedby="percent-help" required>
-                  <option value="fixed">Importo fisso (€)</option>
-                  <option value="percent">Percentuale (%)</option>
-                </select>
-                <p id="percent-help" class="field-help">La percentuale si applica agli accrediti già ricevuti nel mese dal nodo di partenza, seguendo l’ordine dei trasferimenti.</p>
-              </div>
-              <div class="field">
-                <label for="transfer-value">Valore</label>
-                <input id="transfer-value" name="value" type="text" inputmode="decimal" required>
-              </div>
-              <div class="field">
-                <label for="transfer-frequency">Frequenza</label>
-                <select id="transfer-frequency" name="frequency" required>
-                  <option value="monthly">Mensile</option>
-                  <option value="annual">Annuale</option>
-                  <option value="once">Una volta</option>
-                </select>
-              </div>
-              <div class="editor-actions">
-                <button class="primary-button" type="submit">Salva trasferimento</button>
-                <button id="delete-transfer" class="danger-button" type="button">Elimina</button>
-                <button id="transfer-up" type="button">Sposta su</button>
-                <button id="transfer-down" type="button">Sposta giù</button>
-              </div>
-            </form>
-
-            <div class="transfer-section">
-              <h3 id="transfer-heading">Ordine dei trasferimenti</h3>
-              <div id="transfer-list" class="transfer-list" role="group" aria-labelledby="transfer-heading"></div>
-            </div>
-          </aside>
+          <div id="board-empty" class="board-empty">
+            <strong>La mappa è vuota</strong>
+            <p>Aggiungi un nodo o carica l’esempio per iniziare.</p>
+          </div>
+        </div>
+        <p id="board-status" role="status"></p>
+        <div class="board-tools">
+          <div class="board-caption">
+            <span>Importi proiettati al mese 1</span>
+            <span class="keyboard-help">Sposta i nodi con i tasti freccia</span>
+          </div>
+          <div class="toolbar" aria-label="Azioni della mappa">
+            <button id="add-node" class="primary-button" type="button"><span aria-hidden="true">+</span> Nodo</button>
+            <button id="add-transfer" type="button">Trasferimento</button>
+            <button id="load-example" type="button" aria-label="Carica esempio">Esempio</button>
+            <button id="open-simulation" type="button" aria-haspopup="dialog" aria-controls="simulation">Simula</button>
+          </div>
         </div>
       </div>
-    </section>
 
-    <section id="simulation" class="simulation" aria-labelledby="simulation-heading">
-      <div class="section-heading">
-        <div>
-          <h2 id="simulation-heading">Simulazione</h2>
-          <p>Stima come cambiano i saldi dei nodi nel tempo.</p>
-        </div>
-        <form id="simulation-form" class="simulation-form">
+      <aside id="inspector" class="inspector" aria-labelledby="inspector-heading">
+        <h2 id="inspector-heading">Dettagli</h2>
+        <p id="inspector-empty" class="muted">Seleziona un nodo o un trasferimento per modificarlo.</p>
+
+        <form id="node-form" class="editor" hidden>
           <div class="field">
-            <label for="projection-length">Orizzonte in mesi</label>
-            <input id="projection-length" name="months" type="number" min="1" max="120" value="12" required>
+            <label for="node-name">Nome</label>
+            <input id="node-name" name="name" type="text" maxlength="60" required>
           </div>
-          <button class="primary-button" type="submit">Calcola</button>
+          <div class="field">
+            <label for="node-type">Tipo</label>
+            <select id="node-type" name="type" required>
+              <option value="bank">Conto bancario</option>
+              <option value="deposit">Deposito</option>
+              <option value="investment">Investimento</option>
+              <option value="savings">Risparmio</option>
+              <option value="cash">Contanti</option>
+              <option value="source">Fonte di entrate</option>
+              <option value="expense">Spesa</option>
+              <option value="other">Altro</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="node-opening">Saldo iniziale (€)</label>
+            <input id="node-opening" name="opening" type="text" inputmode="decimal" required>
+          </div>
+          <div class="field">
+            <label for="node-monthly-in">Entrate esterne mensili (€)</label>
+            <input id="node-monthly-in" name="monthlyIn" type="text" inputmode="decimal" required>
+          </div>
+          <div class="field">
+            <label for="node-monthly-out">Uscite esterne mensili (€)</label>
+            <input id="node-monthly-out" name="monthlyOut" type="text" inputmode="decimal" required>
+          </div>
+          <div class="field">
+            <label for="node-rate">Rendimento annuo (%)</label>
+            <input id="node-rate" name="annualRate" type="text" inputmode="decimal" required>
+          </div>
+          <section class="summary" aria-labelledby="node-summary-heading">
+            <h3 id="node-summary-heading">Disponibilità e flussi al mese 1</h3>
+            <div id="node-summary" class="form-summary"></div>
+          </section>
+          <div class="editor-actions">
+            <button class="primary-button" type="submit">Salva nodo</button>
+            <button id="delete-node" class="danger-button" type="button">Elimina nodo</button>
+          </div>
         </form>
-      </div>
 
-      <div class="projection">
-        <div class="projection-header">
-          <p id="simulation-status" class="muted" role="status"></p>
+        <form id="transfer-form" class="editor" hidden>
           <div class="field">
-            <label for="projection-month">Mese della proiezione</label>
-            <select id="projection-month" disabled><option value="">—</option></select>
+            <label for="transfer-from">Da</label>
+            <select id="transfer-from" name="from" required></select>
           </div>
+          <div class="field">
+            <label for="transfer-to">A</label>
+            <select id="transfer-to" name="to" required></select>
+          </div>
+          <div class="field">
+            <label for="transfer-mode">Modalità</label>
+            <select id="transfer-mode" name="mode" aria-describedby="percent-help" required>
+              <option value="fixed">Importo fisso (€)</option>
+              <option value="percent">Percentuale (%)</option>
+            </select>
+            <p id="percent-help" class="field-help">La percentuale si applica agli accrediti già ricevuti nel mese dal nodo di partenza, seguendo l’ordine dei trasferimenti.</p>
+          </div>
+          <div class="field">
+            <label for="transfer-value">Valore</label>
+            <input id="transfer-value" name="value" type="text" inputmode="decimal" required>
+          </div>
+          <div class="field">
+            <label for="transfer-frequency">Frequenza</label>
+            <select id="transfer-frequency" name="frequency" required>
+              <option value="monthly">Mensile</option>
+              <option value="annual">Annuale</option>
+              <option value="once">Una volta</option>
+            </select>
+          </div>
+          <div class="editor-actions">
+            <button class="primary-button" type="submit">Salva trasferimento</button>
+            <button id="delete-transfer" class="danger-button" type="button">Elimina</button>
+            <button id="transfer-up" type="button">Sposta su</button>
+            <button id="transfer-down" type="button">Sposta giù</button>
+          </div>
+        </form>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">
+    <div class="section-heading dialog-heading">
+      <div>
+        <h2 id="simulation-heading">Simulazione</h2>
+        <p>Stima come cambiano i saldi dei nodi nel tempo.</p>
+      </div>
+      <button id="close-simulation" type="button">Chiudi</button>
+    </div>
+    <div class="section-heading">
+      <form id="simulation-form" class="simulation-form">
+        <div class="field">
+          <label for="projection-length">Orizzonte in mesi</label>
+          <input id="projection-length" name="months" type="number" min="1" max="120" value="12" required>
         </div>
-        <div class="table-scroll" role="region" aria-label="Risultati della simulazione" tabindex="0">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Nodo</th>
-                <th scope="col">Saldo iniziale</th>
-                <th scope="col">Entrate</th>
-                <th scope="col">Uscite</th>
-                <th scope="col">Rendimento</th>
-                <th scope="col">Saldo finale</th>
-              </tr>
-            </thead>
-            <tbody id="projection-rows"></tbody>
-          </table>
+        <button class="primary-button" type="submit">Calcola</button>
+      </form>
+    </div>
+
+    <div class="projection">
+      <div class="projection-header">
+        <p id="simulation-status" class="muted" role="status"></p>
+        <div class="field">
+          <label for="projection-month">Mese della proiezione</label>
+          <select id="projection-month" disabled><option value="">—</option></select>
         </div>
       </div>
-    </section>
-
-    <footer>La mappa è salvata in questo browser.</footer>
-  </main>
+      <div class="table-scroll" role="region" aria-label="Risultati della simulazione" tabindex="0">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Nodo</th>
+              <th scope="col">Saldo iniziale</th>
+              <th scope="col">Entrate</th>
+              <th scope="col">Uscite</th>
+              <th scope="col">Rendimento</th>
+              <th scope="col">Saldo finale</th>
+            </tr>
+          </thead>
+          <tbody id="projection-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>

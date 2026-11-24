@@ -10,6 +10,13 @@ const types = {
 const frequencyNames = { monthly: 'mensile', annual: 'annuale', once: 'una tantum' };
 const get = (id) => document.getElementById(id);
 const canvas = get('board-canvas');
+const viewport = get('board-viewport');
+const simulation = get('simulation');
+const mobilePanels = matchMedia('(max-width: 900px)');
+const panels = [
+  { element: get('nodes-panel'), button: get('toggle-nodes') },
+  { element: get('inspector'), button: get('toggle-inspector') },
+];
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
 const nodeForm = get('node-form');
@@ -99,11 +106,52 @@ function commit(next, selection, message) {
   return true;
 }
 
+function updatePanels(openPanel = null) {
+  for (const { element, button } of panels) {
+    const open = element.id === openPanel;
+    element.classList.toggle('panel-open', open);
+    button.setAttribute('aria-expanded', String(!mobilePanels.matches || open));
+  }
+}
+
+function showDetails(field) {
+  updatePanels('inspector');
+  field.focus({ preventScroll: true });
+}
+
+function focusCard(key) {
+  const card = nodesLayer.querySelector('[data-id="' + CSS.escape(key) + '"]');
+  card?.focus({ preventScroll: true });
+  card?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 function select(kind, key) {
   selected = { kind, id: key };
   render();
-  if (kind === 'node') nodesLayer.querySelector('[data-id="' + CSS.escape(key) + '"]')?.focus();
+  if (kind === 'transfer') {
+    showDetails(transferForm.elements.namedItem('from'));
+  } else {
+    focusCard(key);
+    if (mobilePanels.matches) showDetails(nodeForm.elements.namedItem('name'));
+  }
 }
+
+for (const { element, button } of panels) {
+  button.addEventListener('click', () => {
+    const open = !element.classList.contains('panel-open');
+    updatePanels(open ? element.id : null);
+  });
+}
+mobilePanels.addEventListener('change', () => updatePanels());
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !mobilePanels.matches || simulation.open) return;
+  const active = panels.find(({ element }) => element.classList.contains('panel-open'));
+  if (active) {
+    updatePanels();
+    active.button.focus();
+  }
+});
+updatePanels();
 
 function makeNode(name, type, x, y, overrides = {}) {
   return { id: id(), name, type, x, y, openingCents: 0, monthlyInCents: 0, monthlyOutCents: 0, annualRate: 0, ...overrides };
@@ -156,7 +204,8 @@ function drawEdges(positions = new Map()) {
     label.setAttribute('x', (startX + endX) / 2);
     label.setAttribute('y', (startY + endY) / 2 - 9 - 14 * (index % 2));
     label.setAttribute('text-anchor', 'middle');
-    label.textContent = String(index + 1) + ' · ' + descriptionOf(transfer);
+    const number = String(index + 1);
+    label.textContent = !vertical && Math.abs(gap) < 145 ? number : number + ' · ' + descriptionOf(transfer);
     content.push(path, label);
   });
   edgesLayer.replaceChildren(...content);
@@ -165,9 +214,7 @@ function drawEdges(positions = new Map()) {
 function moveNode(node, x, y) {
   const moved = { ...node, x: clamp(x), y: clamp(y) };
   commit({ ...board, nodes: board.nodes.map((item) => item.id === node.id ? moved : item) }, { kind: 'node', id: node.id }, 'Posizione aggiornata.');
-  const card = nodesLayer.querySelector('[data-id="' + CSS.escape(node.id) + '"]');
-  card?.focus();
-  card?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  focusCard(node.id);
 }
 
 function resizeCanvas(position) {
@@ -290,6 +337,53 @@ function renderInspector(firstMonth) {
     get('transfer-up').disabled = index === 0;
     get('transfer-down').disabled = index === board.transfers.length - 1;
   }
+}
+
+function nodesInFlowOrder() {
+  const incoming = new Map(board.nodes.map(({ id }) => [id, 0]));
+  const downstream = new Map(board.nodes.map(({ id }) => [id, []]));
+  for (const { from, to } of board.transfers) {
+    incoming.set(to, incoming.get(to) + 1);
+    downstream.get(from).push(to);
+  }
+
+  const remaining = new Set(board.nodes);
+  const byId = new Map(board.nodes.map((node) => [node.id, node]));
+  const ready = board.nodes.filter(({ id }) => incoming.get(id) === 0);
+  const ordered = [];
+  let nextReady = 0;
+  while (remaining.size) {
+    // A cycle has no upstream starting node. Break the tie by insertion order.
+    const node = nextReady < ready.length ? ready[nextReady++] : remaining.values().next().value;
+    if (!remaining.delete(node)) continue;
+    ordered.push(node);
+    for (const key of downstream.get(node.id)) {
+      incoming.set(key, incoming.get(key) - 1);
+      if (incoming.get(key) === 0 && remaining.has(byId.get(key))) {
+        ready.push(byId.get(key));
+      }
+    }
+  }
+  return ordered;
+}
+
+function renderNavigator() {
+  const nodeList = get('node-list');
+  get('node-list-empty').hidden = board.nodes.length > 0;
+  nodeList.replaceChildren(...nodesInFlowOrder().map((node) => {
+    const button = document.createElement('button');
+    const name = document.createElement('span');
+    const type = document.createElement('small');
+    button.type = 'button';
+    button.className = 'node-list-item';
+    button.dataset.type = node.type;
+    button.setAttribute('aria-pressed', String(selected?.id === node.id));
+    name.textContent = node.name;
+    type.textContent = types[node.type];
+    button.append(name, type);
+    button.addEventListener('click', () => select('node', node.id));
+    return button;
+  }));
 
   transferList.replaceChildren(...board.transfers.map((item, index) => {
     const button = document.createElement('button');
@@ -297,10 +391,7 @@ function renderInspector(firstMonth) {
     button.className = 'transfer-item';
     button.setAttribute('aria-pressed', String(selected?.id === item.id));
     button.textContent = (index + 1) + '. ' + nodeName(item.from) + ' → ' + nodeName(item.to) + ' · ' + descriptionOf(item);
-    button.addEventListener('click', () => {
-      select('transfer', item.id);
-      transferForm.elements.namedItem('from').focus();
-    });
+    button.addEventListener('click', () => select('transfer', item.id));
     return button;
   }));
 }
@@ -330,6 +421,7 @@ function render() {
   const months = simulateBoard(board, horizon);
   renderBoard(months[0]);
   renderInspector(months[0]);
+  renderNavigator();
   const period = Math.min(Number(projectionMonth.value) || horizon, horizon);
   projectionMonth.replaceChildren(...months.map(({ month }) => new Option('Mese ' + month, month)));
   projectionMonth.value = period;
@@ -350,7 +442,8 @@ get('add-node').addEventListener('click', () => {
   const item = makeNode('Nuovo nodo', 'bank', x, y);
   if (commit({ ...board, nodes: [...board.nodes, item] }, { kind: 'node', id: item.id }, 'Nodo aggiunto.')) {
     const input = nodeForm.elements.namedItem('name');
-    input.focus();
+    focusCard(item.id);
+    showDetails(input);
     input.select();
   }
 });
@@ -360,7 +453,7 @@ addTransfer.addEventListener('click', () => {
   const to = board.nodes.find((node) => node.id !== from).id;
   const item = makeTransfer(from, to);
   if (commit({ ...board, transfers: [...board.transfers, item] }, { kind: 'transfer', id: item.id }, 'Collegamento aggiunto. Imposta il valore del flusso.')) {
-    transferForm.elements.namedItem('from').focus();
+    showDetails(transferForm.elements.namedItem('from'));
   }
 });
 
@@ -410,11 +503,13 @@ get('delete-node').addEventListener('click', () => {
     nodes: board.nodes.filter((item) => item.id !== key),
     transfers: board.transfers.filter((item) => item.from !== key && item.to !== key),
   }, null, 'Nodo eliminato.');
+  updatePanels();
   get('add-node').focus();
 });
 
 get('delete-transfer').addEventListener('click', () => {
   commit({ ...board, transfers: board.transfers.filter((item) => item.id !== selected.id) }, null, 'Collegamento eliminato.');
+  updatePanels();
   addTransfer.focus();
 });
 
@@ -433,16 +528,25 @@ get('transfer-down').addEventListener('click', () => reorderTransfer(1));
 get('load-example').addEventListener('click', () => {
   if (board.nodes.length && !window.confirm('Sostituire la board attuale con lo scenario di esempio?')) return;
   const salary = makeNode('Stipendio', 'source', 30, 208, { monthlyInCents: 240000 });
-  const bank = makeNode('Conto principale', 'bank', 350, 208, { openingCents: 120000 });
-  const bills = makeNode('Conto per le spese', 'bank', 686, 64, { monthlyOutCents: 135000 });
-  const deposit = makeNode('Conto deposito', 'deposit', 686, 356, { openingCents: 500000, annualRate: 2 });
+  const right = Math.max(730, Math.min(940, viewport.clientWidth)) - nodeWidth - 24;
+  const center = Math.round((30 + right) / 2);
+  const bank = makeNode('Conto principale', 'bank', center, 208, { openingCents: 120000 });
+  const bills = makeNode('Conto per le spese', 'bank', right, 64, { monthlyOutCents: 135000 });
+  const deposit = makeNode('Conto deposito', 'deposit', right, 356, { openingCents: 500000, annualRate: 2 });
   const transfers = [
     makeTransfer(salary.id, bank.id, { mode: 'percent', percent: 100 }),
     makeTransfer(bank.id, bills.id, { amountCents: 140000 }),
     makeTransfer(bank.id, deposit.id, { amountCents: 60000 }),
   ];
-  commit({ nodes: [salary, bank, bills, deposit], transfers }, { kind: 'node', id: bank.id }, 'Scenario di esempio caricato.');
+  if (commit({ nodes: [salary, bank, bills, deposit], transfers }, { kind: 'node', id: bank.id }, 'Scenario di esempio caricato.')) {
+    viewport.scrollTo(0, 0);
+  }
 });
+
+const simulationButton = get('open-simulation');
+simulationButton.addEventListener('click', () => simulation.showModal());
+get('close-simulation').addEventListener('click', () => simulation.close());
+simulation.addEventListener('close', () => simulationButton.focus());
 
 simulationForm.addEventListener('submit', (event) => {
   event.preventDefault();

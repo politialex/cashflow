@@ -6,6 +6,8 @@ Cashflow Studio è una board per disegnare i propri flussi finanziari e simulare
 
 ## Costruisci uno scenario
 
+La board occupa l’intera finestra. A sinistra trovi i nodi in ordine di flusso e la sequenza dei trasferimenti, a destra i dettagli della selezione. La barra flottante apre la simulazione e contiene i comandi per aggiungere nodi e trasferimenti. Su schermi piccoli, apri i pannelli dai pulsanti dedicati.
+
 1. Aggiungi un nodo per ciascun elemento che vuoi seguire, come un conto, un deposito, un investimento, una riserva di liquidità o una fonte di reddito. Imposta saldo iniziale, entrate e uscite mensili esterne e rendimento annuo. Sposta i nodi con il mouse oppure selezionali e usa le frecce.
 2. Aggiungi un collegamento per ogni trasferimento interno. Scegli origine, destinazione, valore fisso o percentuale e frequenza. L’ordine nell’elenco determina quando il trasferimento viene applicato rispetto agli altri.
 3. Apri la simulazione, scegli un orizzonte da 1 a 120 mesi e usa il selettore per leggere il risultato di ogni mese. La board mostra entrate, uscite e disponibilità al termine del primo mese.
@@ -44,10 +46,10 @@ La build produce gli asset statici in `dist/`. Per verificarla, avvia `npm start
 
 GitHub Pages serve `main` dalla radice del repository. Il workflow di release parte dal tag corrispondente alla versione npm. La pagina [Releases](https://github.com/politialex/cashflow/releases) offre uno ZIP per un server statico e un pacchetto npm eseguibile.
 
-Per avviare la v2.0.0 scarica il file `.tgz` della release ed esegui:
+Per avviare la v2.1.0 scarica il file `.tgz` della release ed esegui:
 
 ```sh
-npm exec --package=./politialex-cashflow-studio-2.0.0.tgz -- cashflow-studio
+npm exec --package=./politialex-cashflow-studio-2.1.0.tgz -- cashflow-studio
 ```
 
 Il pacchetto è disponibile anche in [GitHub Packages](https://github.com/politialex/cashflow/pkgs/npm/cashflow-studio) nell’ambito `@politialex`. Per installarlo dal registro serve un account autorizzato e configurato per `https://npm.pkg.github.com`.
