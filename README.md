@@ -46,10 +46,10 @@ La build produce gli asset statici in `dist/`. Per verificarla, avvia `npm start
 
 GitHub Pages serve `main` dalla radice del repository. Il workflow di release parte dal tag corrispondente alla versione npm. La pagina [Releases](https://github.com/politialex/cashflow/releases) offre uno ZIP per un server statico e un pacchetto npm eseguibile.
 
-Per avviare la v2.1.0 scarica il file `.tgz` della release ed esegui:
+Per avviare la v2.1.1 scarica il file `.tgz` della release ed esegui:
 
 ```sh
-npm exec --package=./politialex-cashflow-studio-2.1.0.tgz -- cashflow-studio
+npm exec --package=./politialex-cashflow-studio-2.1.1.tgz -- cashflow-studio
 ```
 
 Il pacchetto è disponibile anche in [GitHub Packages](https://github.com/politialex/cashflow/pkgs/npm/cashflow-studio) nell’ambito `@politialex`. Per installarlo dal registro serve un account autorizzato e configurato per `https://npm.pkg.github.com`.
