@@ -301,7 +301,8 @@ function drawEdges(firstMonth, temporaryPoint = null) {
     group.append(svgElement('path', { class: 'board-edge', d, 'marker-end': 'url(#flow-arrow)' }));
     const amount = transferAmount(transfer, firstMonth);
     const label = svgElement('text', { class: 'edge-label', x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 10, 'text-anchor': 'middle' });
-    label.textContent = money(Math.abs(amount));
+    const cadence = { monthly: '/mese', annual: '/anno', once: ' una tantum' }[transfer.frequency];
+    label.textContent = money(Math.abs(amount)) + (cadence ?? '');
     group.append(label);
     group.addEventListener('click', (event) => { event.stopPropagation(); select('transfer', transfer.id); });
     group.addEventListener('dblclick', (event) => { event.stopPropagation(); openQuickEditor('transfer', transfer.id, event.clientX, event.clientY); });

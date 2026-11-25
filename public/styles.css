@@ -217,7 +217,7 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
 }
 @media (max-width: 560px) {
   body { grid-template-rows: 48px minmax(0, 1fr); }
-  .site-header { padding: 6px 8px; }.brand { font-size: .9rem; }.brand-mark { width: 30px; height: 30px; }.header-actions { gap: 4px; }.header-actions button { padding-inline: 7px; font-size: .68rem; }#fit-view { display: none; }
+  .site-header { gap: 8px; padding: 6px 8px; }.brand { font-size: .9rem; }.brand-mark { width: 30px; height: 30px; }.header-actions { gap: 4px; }.header-actions button { padding-inline: 7px; font-size: .68rem; }
   .board-tools { bottom: max(10px, env(safe-area-inset-bottom)); gap: 4px; padding: 5px; }.board-tools button { padding-inline: 8px; font-size: .67rem; }.tool-divider { display: none; }
   .zoom-controls { right: 8px; bottom: 66px; }.zoom-controls output { display: none; }
   .account-node { width: 220px; }.node-type-grid { grid-template-columns: 1fr; }.small-dialog { max-height: calc(100dvh - 24px); overflow: auto; }
