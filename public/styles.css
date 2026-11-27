@@ -113,6 +113,8 @@ h3 { font-size: .76rem; }
 .board-edge { fill: none; stroke: currentColor; stroke-width: 2; pointer-events: none; }
 .edge-group:hover, .edge-group.is-selected { color: var(--accent); }
 .edge-group.is-selected .board-edge { stroke-width: 3; }
+.edge-group:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.edge-group:focus-visible .board-edge { stroke-width: 4; }
 .edge-label { fill: #d8d8d8; stroke: var(--canvas); stroke-width: 8; paint-order: stroke; stroke-linecap: round; stroke-linejoin: round; font-family: "Noto Sans Mono", ui-monospace, monospace; font-size: 11px; font-weight: 600; letter-spacing: 0; pointer-events: none; }
 .is-drawing { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 7 6; }
 #flow-arrow path { fill: currentColor; }

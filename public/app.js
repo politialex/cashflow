@@ -328,6 +328,13 @@ function drawEdges(firstMonth, temporaryPoint = null) {
     label.textContent = money(Math.abs(amount)) + (cadence ?? '');
     group.append(label);
     group.addEventListener('click', (event) => { event.stopPropagation(); select('transfer', transfer.id); });
+    group.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      if (event.repeat) return;
+      select('transfer', transfer.id);
+      edgesLayer.querySelector('[data-id="' + CSS.escape(transfer.id) + '"]').focus({ preventScroll: true });
+    });
     group.addEventListener('dblclick', (event) => { event.stopPropagation(); openQuickEditor('transfer', transfer.id, event.clientX, event.clientY); });
     content.push(group);
   }
