@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=mobile-fit">
-  <script src="./public/app.js?v=transfer-cadence" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=board-navigation">
+  <script src="./public/app.js?v=board-navigation" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -17,7 +17,6 @@
     </a>
     <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> Salvato nel browser</span></div>
     <div class="header-actions">
-      <button id="fit-view" type="button">Adatta</button>
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
       <button id="toggle-inspector" type="button" aria-controls="inspector" aria-expanded="false">Dettagli</button>
     </div>
@@ -44,8 +43,11 @@
           <div id="board-empty" class="board-empty"><span aria-hidden="true">＋</span><strong>Costruisci il tuo flusso</strong><p>Doppio click qui oppure usa il pulsante in basso.</p></div>
         </div>
         <p id="board-status" role="status" aria-live="polite"></p>
-        <div class="zoom-controls" aria-label="Zoom">
-          <button id="zoom-out" type="button" aria-label="Riduci zoom">−</button><output id="zoom-level">100%</output><button id="zoom-in" type="button" aria-label="Aumenta zoom">+</button>
+        <div class="zoom-controls" role="group" aria-label="Navigazione della board">
+          <button id="zoom-in" type="button" aria-label="Aumenta zoom">+</button>
+          <button id="zoom-out" type="button" aria-label="Riduci zoom">−</button>
+          <button id="fit-view" type="button" aria-label="Adatta la vista a tutti i nodi">Adatta</button>
+          <output id="zoom-level" aria-label="Livello di zoom">100%</output>
         </div>
         <div class="board-tools">
           <button id="add-node" class="primary-button" type="button">Aggiungi</button>

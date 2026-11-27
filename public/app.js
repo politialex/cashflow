@@ -25,9 +25,11 @@ const panels = [
   { element: get('inspector'), button: get('toggle-inspector') },
 ];
 const grid = 20;
-const world = { width: 3200, height: 2200 };
+const minZoom = .025;
+const world = { width: 6400, height: 4400 };
 let board = { nodes: [], transfers: [] };
 let camera = { x: 0, y: 0, zoom: 1 };
+let cameraRestored = false;
 let selected = null;
 let horizon = 12;
 let drag = null;
@@ -44,9 +46,18 @@ const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
 const decimalInput = (number) => String(number).replace('.', ',');
 const signedFlow = (node) => node.monthlyInCents - node.monthlyOutCents;
 const id = () => crypto.randomUUID();
-const snap = (value) => Math.max(0, Math.min(Math.round(value / grid) * grid, 5000));
+const snap = (value) => Math.round(value / grid) * grid;
 const nodeIsAccount = (node) => accountTypes.has(node.type);
 const nodeSize = (node) => nodeIsAccount(node) ? { width: 240, height: 124 } : { width: 176, height: 74 };
+function boundPosition(type, x, y, snapToGrid = false) {
+  const { width, height } = nodeSize({ type });
+  const limit = (value, max) => Math.max(0, Math.min(
+    snapToGrid ? snap(value) : value,
+    snapToGrid ? Math.floor(max / grid) * grid : max,
+  ));
+  return { x: limit(x, world.width - width), y: limit(y, world.height - height) };
+}
+
 const cloneBoard = (value = board) => structuredClone(value);
 
 function parseDecimal(raw, label, minimum, maximum, digits = 2) {
@@ -84,18 +95,26 @@ function validateSavedBoard(value) {
       throw new Error('Board non valida');
     }
   }
-  return value;
+  return { ...value, nodes: value.nodes.map((node) => ({ ...node, ...boundPosition(node.type, node.x, node.y) })) };
 }
 
 try {
   const saved = localStorage.getItem(storageKey);
   if (saved) board = validateSavedBoard(JSON.parse(saved));
-  const savedCamera = JSON.parse(localStorage.getItem(cameraKey) ?? 'null');
-  if (savedCamera && Number.isFinite(savedCamera.x) && Number.isFinite(savedCamera.y)
-    && Number.isFinite(savedCamera.zoom)) camera = savedCamera;
 } catch {
   storageReadable = false;
   writeStatus('Il salvataggio del browser non è disponibile. Le modifiche restano in questa sessione.');
+}
+
+try {
+  const saved = JSON.parse(localStorage.getItem(cameraKey) ?? 'null');
+  if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
+    && Number.isFinite(saved.zoom) && saved.zoom >= minZoom && saved.zoom <= 2) {
+    camera = saved;
+    cameraRestored = true;
+  }
+} catch {
+  // Un’inquadratura illeggibile può essere sostituita senza perdere la board.
 }
 
 function save() {
@@ -121,7 +140,7 @@ function commit(next, nextSelection, message, record = true) {
     if (history.length > 60) history.shift();
     future = [];
   }
-  board = next;
+  board = { ...next, nodes: next.nodes.map((node) => ({ ...node, ...boundPosition(node.type, node.x, node.y) })) };
   selected = nextSelection;
   save();
   render();
@@ -185,7 +204,7 @@ function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + vie
   clientY = viewport.getBoundingClientRect().top + viewport.clientHeight / 2) {
   const rect = viewport.getBoundingClientRect();
   const oldZoom = camera.zoom;
-  const zoom = Math.max(.35, Math.min(2, nextZoom));
+  const zoom = Math.max(minZoom, Math.min(2, nextZoom));
   const worldX = (clientX - rect.left - camera.x) / oldZoom;
   const worldY = (clientY - rect.top - camera.y) / oldZoom;
   camera.zoom = zoom;
@@ -194,9 +213,13 @@ function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + vie
   applyCamera();
 }
 
+function centerBoard() {
+  camera = { x: (viewport.clientWidth - world.width) / 2, y: (viewport.clientHeight - world.height) / 2, zoom: 1 };
+}
+
 function fitView() {
   if (!board.nodes.length) {
-    camera = { x: 24, y: 24, zoom: 1 };
+    centerBoard();
     applyCamera();
     return;
   }
@@ -207,8 +230,8 @@ function fitView() {
       right: Math.max(area.right, node.x + size.width), bottom: Math.max(area.bottom, node.y + size.height),
     };
   }, { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
-  const padding = 90;
-  const zoom = Math.max(.35, Math.min(1.2,
+  const padding = Math.min(90, viewport.clientWidth / 8, viewport.clientHeight / 8);
+  const zoom = Math.max(minZoom, Math.min(1.2,
     (viewport.clientWidth - padding * 2) / (bounds.right - bounds.left),
     (viewport.clientHeight - padding * 2) / (bounds.bottom - bounds.top)));
   camera.zoom = zoom;
@@ -225,7 +248,7 @@ function makeNode(type, x, y) {
   };
   const [name, flow] = defaults[type] ?? defaults.other;
   return applySignedFlow({
-    id: id(), name, type, x: snap(x), y: snap(y), openingCents: 0,
+    id: id(), name, type, ...boundPosition(type, x, y, true), openingCents: 0,
     monthlyInCents: 0, monthlyOutCents: 0, annualRate: 0,
   }, flow);
 }
@@ -342,8 +365,7 @@ function moveNodeDrag(event, node, card) {
   const dy = (event.clientY - drag.startY) / camera.zoom;
   if (!drag.moved && Math.hypot(dx, dy) < 3) return;
   drag.moved = true;
-  const x = snap(drag.x + dx);
-  const y = snap(drag.y + dy);
+  const { x, y } = boundPosition(node.type, drag.x + dx, drag.y + dy, true);
   card.style.left = x + 'px';
   card.style.top = y + 'px';
   const preview = board.nodes.map((item) => item.id === node.id ? { ...item, x, y } : item);
@@ -423,7 +445,12 @@ function renderBoard(firstMonth) {
       if (!direction) return;
       event.preventDefault();
       const scale = event.shiftKey ? 3 : 1;
-      commit({ ...board, nodes: board.nodes.map((item) => item.id === node.id ? { ...item, x: snap(item.x + direction[0] * scale), y: snap(item.y + direction[1] * scale) } : item) }, { kind: 'node', id: node.id }, 'Posizione aggiornata.');
+      const position = boundPosition(node.type, node.x + direction[0] * scale, node.y + direction[1] * scale, true);
+      if (position.x === node.x && position.y === node.y) return;
+      const nodes = board.nodes.map((item) => item.id === node.id ? { ...item, ...position } : item);
+      if (commit({ ...board, nodes }, { kind: 'node', id: node.id }, 'Posizione aggiornata.')) {
+        nodesLayer.querySelector('[data-id="' + CSS.escape(node.id) + '"]').focus({ preventScroll: true });
+      }
     });
     return card;
   });
@@ -822,5 +849,5 @@ document.addEventListener('keydown', (event) => {
 
 canvas.style.width = world.width + 'px';
 canvas.style.height = world.height + 'px';
+if (!cameraRestored) centerBoard();
 render();
-if (!localStorage.getItem(cameraKey)) requestAnimationFrame(fitView);
