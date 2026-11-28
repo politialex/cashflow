@@ -16,17 +16,12 @@ const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
 const selectionBox = get('board-selection-box');
-const nodeForm = get('node-form');
-const transferForm = get('transfer-form');
 const simulation = get('simulation');
 const newNodeDialog = get('new-node-dialog');
 const quickEditor = get('quick-editor');
 const mobilePanels = matchMedia('(max-width: 900px)');
 const nodesPanel = get('nodes-panel');
-const panels = [
-  { element: nodesPanel, button: get('toggle-nodes') },
-  { element: get('inspector'), button: get('toggle-inspector') },
-];
+const toggleNodes = get('toggle-nodes');
 const grid = 20;
 const minZoom = .025;
 const world = { width: 6400, height: 4400 };
@@ -38,8 +33,7 @@ let horizon = 12;
 let drag = null;
 let connection = null;
 let connectFrom = null;
-let pendingNodePosition = null;
-let pendingConnectionFrom = null;
+let nodeDraft = null;
 let quickTarget = null;
 let history = [];
 let future = [];
@@ -174,22 +168,13 @@ function redo() {
   writeStatus('Modifica ripristinata.');
 }
 
-function updatePanels(openPanel = null) {
+function updatePanels(open = false) {
   const mobile = mobilePanels.matches;
-  for (const { element, button } of panels) {
-    const open = mobile ? element.id === openPanel : element !== nodesPanel || desktopNodesOpen;
-    if (element === nodesPanel) {
-      if (!open && element.contains(document.activeElement)) button.focus();
-      element.hidden = !open;
-    }
-    element.classList.toggle('panel-open', mobile && open);
-    button.setAttribute('aria-expanded', String(open));
-  }
-  workspace.classList.toggle('nodes-panel-closed', !mobile && !desktopNodesOpen);
-}
-
-function showInspector() {
-  if (mobilePanels.matches) updatePanels('inspector');
+  const visible = mobile ? open : desktopNodesOpen;
+  if (!visible && nodesPanel.contains(document.activeElement)) toggleNodes.focus();
+  nodesPanel.hidden = !visible;
+  toggleNodes.setAttribute('aria-expanded', String(visible));
+  workspace.classList.toggle('nodes-panel-closed', !mobile && !visible);
 }
 
 function screenToWorld(clientX, clientY) {
@@ -339,13 +324,16 @@ function drawEdges(firstMonth, temporaryPoint = null, nodes = board.nodes) {
     const cadence = { monthly: '/mese', annual: '/anno', once: ' una tantum' }[transfer.frequency];
     label.textContent = money(Math.abs(amount)) + (cadence ?? '');
     group.append(label);
-    group.addEventListener('click', (event) => { event.stopPropagation(); select('transfer', transfer.id); });
+    group.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (event.pointerType === 'touch') openQuickEditor('transfer', transfer.id, event.clientX, event.clientY);
+      else updateSelection({ kind: 'transfer', id: transfer.id });
+    });
     group.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       if (event.repeat) return;
-      select('transfer', transfer.id);
-      edgesLayer.querySelector('[data-id="' + CSS.escape(transfer.id) + '"]').focus({ preventScroll: true });
+      openQuickEditor('transfer', transfer.id);
     });
     group.addEventListener('dblclick', (event) => { event.stopPropagation(); openQuickEditor('transfer', transfer.id, event.clientX, event.clientY); });
     content.push(group);
@@ -363,12 +351,6 @@ function createText(className, text) {
   span.className = className;
   span.textContent = text;
   return span;
-}
-
-function select(kind, key, openPanel = false) {
-  selected = { kind, id: key };
-  render();
-  if (openPanel) showInspector();
 }
 
 function isNodeSelected(key) {
@@ -394,9 +376,9 @@ function updateSelection(selection) {
   for (const item of get('node-list').querySelectorAll('.node-list-item')) {
     item.setAttribute('aria-pressed', String(isNodeSelected(item.dataset.id)));
   }
-  const firstMonth = simulateBoard(board, 1)[0];
-  renderInspector(firstMonth);
-  drawEdges(firstMonth);
+  for (const edge of edgesLayer.querySelectorAll('.edge-group')) {
+    edge.classList.toggle('is-selected', selected?.kind === 'transfer' && selected.id === edge.dataset.id);
+  }
 }
 
 function toggleNodeSelection(key) {
@@ -480,6 +462,9 @@ function endNodeDrag(event, node) {
     commit({ ...board, nodes }, selection, 'Posizione aggiornata.');
   } else {
     updateSelection(firstMonth ? selection : nodeSelection([node.id]));
+    if (!firstMonth && event.pointerType === 'touch' && !viewport.classList.contains('connect-mode')) {
+      openQuickEditor('node', node.id);
+    }
   }
 }
 
@@ -546,8 +531,7 @@ function renderBoard(firstMonth) {
         } else if (event.shiftKey) {
           toggleNodeSelection(node.id);
         } else {
-          const rect = card.getBoundingClientRect();
-          openQuickEditor('node', node.id, rect.right, rect.top);
+          openQuickEditor('node', node.id);
         }
         return;
       }
@@ -572,38 +556,20 @@ function setValues(form, values) {
   for (const [key, value] of Object.entries(values)) form.elements.namedItem(key).value = value;
 }
 
-function renderInspector(firstMonth) {
-  const node = selected?.kind === 'node' && board.nodes.find(({ id }) => id === selected.id);
-  const transfer = selected?.kind === 'transfer' && board.transfers.find(({ id }) => id === selected.id);
-  nodeForm.hidden = !node;
-  transferForm.hidden = !transfer;
-  get('inspector-empty').hidden = Boolean(node || transfer);
-  if (node) {
-    setValues(nodeForm, {
-      name: node.name, provider: providerName(node), type: node.type, opening: moneyInput(node.openingCents),
-      flow: (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node)), annualRate: decimalInput(node.annualRate),
-    });
-    nodeForm.classList.toggle('compact-editor', !nodeIsAccount(node));
-    const result = firstMonth.nodes.find(({ id }) => id === node.id);
-    const details = document.createElement('dl');
-    for (const [label, value] of Object.entries({ Entrate: result.inflow, Uscite: result.outflow, Disponibilità: result.balance })) {
-      const term = document.createElement('dt');
-      const amount = document.createElement('dd');
-      term.textContent = label;
-      amount.textContent = money(value);
-      if (label === 'Disponibilità' && value !== 0) amount.className = value > 0 ? 'positive' : 'negative';
-      details.append(term, amount);
-    }
-    get('node-summary').replaceChildren(details);
+function renderEditorSummary(node) {
+  const result = simulateBoard(board, 1)[0].nodes.find(({ id }) => id === node.id);
+  const details = document.createElement('dl');
+  for (const [label, value] of Object.entries({ Entrate: result.inflow, Uscite: result.outflow, Disponibilità: result.balance })) {
+    const term = document.createElement('dt');
+    const amount = document.createElement('dd');
+    term.textContent = label;
+    amount.textContent = money(value);
+    if (label === 'Disponibilità' && value !== 0) amount.className = value > 0 ? 'positive' : 'negative';
+    details.append(term, amount);
   }
-  if (transfer) {
-    setValues(transferForm, {
-      from: transfer.from, to: transfer.to, mode: transfer.mode, frequency: transfer.frequency,
-      value: transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent),
-    });
-    get('transfer-from-label').textContent = nodeName(transfer.from);
-    get('transfer-to-label').textContent = nodeName(transfer.to);
-  }
+  const summary = get('quick-node-summary');
+  summary.closest('details').open = false;
+  summary.replaceChildren(details);
 }
 
 function renderNodeList(firstMonth) {
@@ -644,7 +610,7 @@ function renderNodeList(firstMonth) {
     const result = results.get(node.id);
     item.append(createText('list-name', label), createText('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
     item.addEventListener('click', () => {
-      select('node', node.id);
+      updateSelection({ kind: 'node', id: node.id });
       const size = nodeSize(node);
       camera.x = viewport.clientWidth / 2 - (node.x + size.width / 2) * camera.zoom;
       camera.y = viewport.clientHeight / 2 - (node.y + size.height / 2) * camera.zoom;
@@ -707,7 +673,6 @@ function drawProjection(periods, monthNumber) {
 function render() {
   const periods = simulateBoard(board, horizon);
   renderBoard(periods[0]);
-  renderInspector(periods[0]);
   renderNodeList(periods[0]);
   const projectionMonth = get('projection-month');
   const activeMonth = Math.min(Number(projectionMonth.value) || horizon, horizon);
@@ -718,69 +683,187 @@ function render() {
   applyCamera();
 }
 
-function openNewNode(clientX = null, clientY = null, origin = connectFrom) {
-  pendingConnectionFrom = origin?.id ?? null;
-  pendingNodePosition = clientX === null
-    ? screenToWorld(viewport.getBoundingClientRect().left + viewport.clientWidth / 2, viewport.getBoundingClientRect().top + viewport.clientHeight / 2)
-    : screenToWorld(clientX, clientY);
-  newNodeDialog.style.left = '';
-  newNodeDialog.style.top = '';
-  newNodeDialog.classList.toggle('is-anchored', clientX !== null && Boolean(origin));
-  newNodeDialog.showModal();
-  if (newNodeDialog.classList.contains('is-anchored')) {
-    newNodeDialog.style.left = Math.max(12, Math.min(clientX + 12, innerWidth - newNodeDialog.offsetWidth - 12)) + 'px';
-    newNodeDialog.style.top = Math.max(12, Math.min(clientY + 12, innerHeight - newNodeDialog.offsetHeight - 12)) + 'px';
+function boardElement(kind, key) {
+  const layer = kind === 'node' ? nodesLayer : edgesLayer;
+  return layer.querySelector('[data-id="' + CSS.escape(key) + '"]');
+}
+
+function placePopover(popover, rect) {
+  if (!popover.matches(':popover-open')) popover.showPopover();
+  const margin = 12;
+  const gap = 12;
+  const { offsetWidth: width, offsetHeight: height } = popover;
+  const right = rect.right + gap;
+  const left = right + width <= innerWidth - margin ? right : rect.left - width - gap;
+  popover.style.left = Math.max(margin, Math.min(left, innerWidth - width - margin)) + 'px';
+  popover.style.top = Math.max(margin, Math.min(rect.top, innerHeight - height - margin)) + 'px';
+}
+
+function pointAnchor(x, y) {
+  return { left: x, right: x, top: y };
+}
+
+function openNewNode(clientX = null, clientY = null, origin = connectFrom, trigger = viewport) {
+  const rect = viewport.getBoundingClientRect();
+  const x = clientX ?? rect.left + viewport.clientWidth / 2;
+  const y = clientY ?? rect.top + viewport.clientHeight / 2;
+  nodeDraft = { position: screenToWorld(x, y), origin: origin?.id, trigger };
+  get('new-node-preview').replaceChildren();
+  placePopover(newNodeDialog, clientX === null ? trigger.getBoundingClientRect() : pointAnchor(x, y));
+  get('new-node-form').querySelector('button[name="type"]').focus({ preventScroll: true });
+}
+
+function closeNewNode(restoreFocus = true) {
+  const trigger = nodeDraft.trigger;
+  nodeDraft = null;
+  newNodeDialog.hidePopover();
+  if (restoreFocus) (trigger.isConnected ? trigger : viewport).focus({ preventScroll: true });
+}
+
+function showNodePreview(button) {
+  if (!button || !nodeDraft) return;
+  const type = button.value;
+  const account = accountTypes.has(type);
+  const preview = get('new-node-preview');
+  preview.dataset.type = type;
+  preview.replaceChildren(
+    createText('preview-type', types[type]),
+    createText('preview-title', button.querySelector('strong').textContent + ' di esempio'),
+    createText('preview-amount', money(account ? 120000 : type === 'source' ? 250000 : -50000)),
+    createText('preview-caption', account ? 'Disponibilità' : type === 'source' ? 'Entrata mensile' : 'Uscita mensile'),
+  );
+}
+
+function updateEditorFields() {
+  const account = accountTypes.has(get('quick-type').value);
+  for (const field of quickEditor.querySelectorAll('.quick-account-field')) field.hidden = !account;
+  get('quick-transfer-value').labels[0].textContent = get('quick-transfer-mode').value === 'percent'
+    ? 'Percentuale delle entrate (%)' : 'Importo (€)';
+}
+
+function clearEditorError() {
+  const invalid = quickEditor.querySelector('[aria-invalid]');
+  if (invalid) {
+    invalid.removeAttribute('aria-invalid');
+    if (invalid === get('quick-flow')) invalid.setAttribute('aria-describedby', 'quick-flow-help');
+    else invalid.removeAttribute('aria-describedby');
   }
+  get('quick-error').textContent = '';
 }
 
-function placeQuickEditor(clientX, clientY) {
-  quickEditor.showPopover();
-  const width = 280;
-  quickEditor.style.left = Math.max(12, Math.min(clientX + 12, innerWidth - width - 12)) + 'px';
-  quickEditor.style.top = Math.max(12, Math.min(clientY + 12, innerHeight - quickEditor.offsetHeight - 12)) + 'px';
-}
-
-function openQuickEditor(kind, key, clientX, clientY) {
+function openQuickEditor(kind, key, clientX = null, clientY = null) {
+  if (quickTarget && !applyQuickEditor(false)) return;
+  const node = kind === 'node' ? board.nodes.find(({ id }) => id === key) : null;
+  const transfer = kind === 'transfer' ? board.transfers.find(({ id }) => id === key) : null;
+  if (!node && !transfer) return;
   quickTarget = { kind, id: key };
-  const nodeFields = get('quick-node-fields');
-  const transferFields = get('quick-transfer-fields');
-  nodeFields.hidden = kind !== 'node';
-  transferFields.hidden = kind !== 'transfer';
-  if (kind === 'node') {
-    const node = board.nodes.find(({ id }) => id === key);
+  updateSelection(quickTarget);
+  clearEditorError();
+  get('quick-node-fields').hidden = !node;
+  get('quick-transfer-fields').hidden = !transfer;
+  const form = get('quick-form');
+  const element = boardElement(kind, key);
+  if (node) {
     get('quick-title').textContent = 'Modifica ' + node.name;
-    get('quick-name').value = node.name;
-    get('quick-provider').value = providerName(node);
-    get('quick-flow').value = (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node));
-    get('quick-opening').value = moneyInput(node.openingCents);
-    get('quick-rate').value = decimalInput(node.annualRate);
-    for (const element of quickEditor.querySelectorAll('.quick-account-field')) element.hidden = !nodeIsAccount(node);
-    placeQuickEditor(clientX, clientY);
-    get('quick-name').focus();
-    get('quick-name').select();
+    setValues(form, {
+      name: node.name, provider: providerName(node), type: node.type, opening: moneyInput(node.openingCents),
+      flow: (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node)), annualRate: decimalInput(node.annualRate),
+    });
+    renderEditorSummary(node);
   } else {
-    const transfer = board.transfers.find(({ id }) => id === key);
     get('quick-title').textContent = 'Modifica collegamento';
     get('quick-transfer-route').textContent = nodeName(transfer.from) + ' → ' + nodeName(transfer.to);
-    get('quick-transfer-value').value = transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent) + '%';
-    placeQuickEditor(clientX, clientY);
-    get('quick-transfer-value').focus();
-    get('quick-transfer-value').select();
+    setValues(form, {
+      mode: transfer.mode, frequency: transfer.frequency,
+      value: transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent),
+    });
   }
+  updateEditorFields();
+  const rect = element.getBoundingClientRect();
+  const anchor = node || clientX === null ? rect : pointAnchor(clientX, clientY);
+  placePopover(quickEditor, anchor);
+  const input = get(node ? 'quick-name' : 'quick-transfer-value');
+  input.focus({ preventScroll: true });
+  input.select();
 }
 
-function deleteSelection() {
-  if (!selected) return;
-  if (selected.kind === 'node') {
-    const node = board.nodes.find(({ id }) => id === selected.id);
-    if (!confirm('Eliminare «' + node.name + '» e i suoi collegamenti?')) return;
-    commit({
+function closeQuickEditor(restoreFocus = true) {
+  const { kind, id } = quickTarget;
+  quickTarget = null;
+  quickEditor.hidePopover();
+  if (restoreFocus) (boardElement(kind, id) ?? viewport).focus({ preventScroll: true });
+}
+
+function applyQuickEditor(restoreFocus = true) {
+  clearEditorError();
+  const { kind, id } = quickTarget;
+  const collection = kind === 'node' ? 'nodes' : 'transfers';
+  const current = board[collection].find((item) => item.id === id);
+  if (!current) {
+    closeQuickEditor(restoreFocus);
+    return true;
+  }
+  let field;
+  const read = (id, parser = (value) => value) => {
+    field = get(id);
+    return parser(field.value);
+  };
+  let updated;
+  try {
+    if (kind === 'node') {
+      const name = read('quick-name', (value) => {
+        if (!value.trim()) throw new RangeError('Inserisci il nome.');
+        return value.trim();
+      });
+      const provider = read('quick-provider').trim();
+      const type = read('quick-type');
+      const account = accountTypes.has(type);
+      updated = applySignedFlow({
+        ...current, name, type,
+        openingCents: account ? read('quick-opening', (value) => toCents(value, 'Saldo iniziale', true)) : 0,
+        annualRate: account ? read('quick-rate', (value) => parseDecimal(value, 'Rendimento', -100, 100, 4)) : 0,
+      }, read('quick-flow', (value) => toCents(value, 'Flusso', true)));
+      if (provider !== providerName(current)) updated.provider = provider;
+    } else {
+      const mode = read('quick-transfer-mode');
+      const frequency = read('quick-transfer-frequency');
+      const value = read('quick-transfer-value', (raw) => parseDecimal(raw, 'Valore', 0, mode === 'fixed' ? 9_999_999.99 : 100));
+      updated = {
+        ...current, mode, frequency,
+        amountCents: mode === 'fixed' ? Math.round(value * 100) : 0,
+        percent: mode === 'percent' ? value : 0,
+      };
+    }
+  } catch (error) {
+    field.setAttribute('aria-invalid', 'true');
+    field.setAttribute('aria-describedby', field.id === 'quick-flow' ? 'quick-flow-help quick-error' : 'quick-error');
+    get('quick-error').textContent = error.message;
+    field.focus();
+    return false;
+  }
+  if (Object.keys(updated).some((key) => updated[key] !== current[key])) {
+    const next = { ...board, [collection]: board[collection].map((item) => item.id === id ? updated : item) };
+    if (!commit(next, quickTarget, kind === 'node' ? 'Elemento aggiornato.' : 'Collegamento aggiornato.')) {
+      get('quick-error').textContent = get('board-status').textContent;
+      return false;
+    }
+  }
+  closeQuickEditor(restoreFocus);
+  return true;
+}
+
+function deleteSelection(target = selected) {
+  if (!target) return false;
+  if (target.kind === 'node') {
+    const node = board.nodes.find(({ id }) => id === target.id);
+    if (!confirm('Eliminare «' + node.name + '» e i suoi collegamenti?')) return false;
+    return commit({
       nodes: board.nodes.filter(({ id }) => id !== node.id),
       transfers: board.transfers.filter(({ from, to }) => from !== node.id && to !== node.id),
     }, null, 'Elemento eliminato.');
-  } else {
-    commit({ ...board, transfers: board.transfers.filter(({ id }) => id !== selected.id) }, null, 'Collegamento eliminato.');
   }
+  if (!confirm('Eliminare il collegamento?')) return false;
+  return commit({ ...board, transfers: board.transfers.filter(({ id }) => id !== target.id) }, null, 'Collegamento eliminato.');
 }
 
 function finishConnection(clientX, clientY) {
@@ -794,7 +877,7 @@ function finishConnection(clientX, clientY) {
     drawEdges(simulateBoard(board, 1)[0]);
     if (!target && hit?.closest('#board-viewport') && !hit.closest('.edge-group')) {
       nodesLayer.querySelector('[data-id="' + CSS.escape(origin.id) + '"]').focus({ preventScroll: true });
-      openNewNode(clientX, clientY, origin);
+      openNewNode(clientX, clientY, origin, boardElement('node', origin.id));
       return;
     }
     writeStatus('Collegamento annullato.');
@@ -888,6 +971,11 @@ viewport.addEventListener('pointercancel', () => {
 
 viewport.addEventListener('keydown', (event) => {
   if (event.target !== viewport) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    if (!event.repeat) openNewNode();
+    return;
+  }
   const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
   if (!direction) return;
   event.preventDefault();
@@ -906,40 +994,39 @@ viewport.addEventListener('dblclick', (event) => {
   openNewNode(event.clientX, event.clientY);
 });
 
-for (const { element, button } of panels) {
-  button.addEventListener('click', () => {
-    if (!mobilePanels.matches && element === nodesPanel) desktopNodesOpen = !desktopNodesOpen;
-    updatePanels(element.classList.contains('panel-open') ? null : element.id);
-  });
-}
+toggleNodes.addEventListener('click', () => {
+  if (!mobilePanels.matches) desktopNodesOpen = !desktopNodesOpen;
+  updatePanels(nodesPanel.hidden);
+});
 mobilePanels.addEventListener('change', () => updatePanels());
 updatePanels();
 
 get('zoom-in').addEventListener('click', () => setZoom(camera.zoom + .15));
 get('zoom-out').addEventListener('click', () => setZoom(camera.zoom - .15));
 get('fit-view').addEventListener('click', fitView);
-get('add-node').addEventListener('click', () => openNewNode());
-get('panel-add-node').addEventListener('click', () => openNewNode());
-get('close-new-node').addEventListener('click', () => newNodeDialog.close());
+for (const id of ['add-node', 'panel-add-node']) {
+  get(id).addEventListener('click', (event) => openNewNode(null, null, connectFrom, event.currentTarget));
+}
+get('close-new-node').addEventListener('click', () => closeNewNode());
 
-get('new-node-form').addEventListener('submit', (event) => {
+const newNodeForm = get('new-node-form');
+for (const eventName of ['pointerover', 'focusin']) {
+  newNodeForm.addEventListener(eventName, (event) => showNodePreview(event.target.closest('button[name="type"]')));
+}
+newNodeForm.addEventListener('submit', (event) => {
   event.preventDefault();
   const type = event.submitter?.value;
-  if (!Object.hasOwn(types, type)) return;
-  const node = makeNode(type, pendingNodePosition.x, pendingNodePosition.y);
-  const origin = board.nodes.find(({ id }) => id === pendingConnectionFrom);
+  if (!nodeDraft || !Object.hasOwn(types, type)) return;
+  const node = makeNode(type, nodeDraft.position.x, nodeDraft.position.y);
+  const origin = board.nodes.find(({ id }) => id === nodeDraft.origin);
   const transfers = origin ? [...board.transfers, makeTransfer(origin, node)] : board.transfers;
   if (commit({ nodes: [...board.nodes, node], transfers }, { kind: 'node', id: node.id },
     origin ? 'Elemento aggiunto e collegato.' : 'Elemento aggiunto.')) {
-    newNodeDialog.close();
+    closeNewNode(false);
     viewport.classList.remove('connect-mode');
     connectFrom = null;
-    const rect = viewport.getBoundingClientRect();
-    const point = {
-      x: rect.left + camera.x + node.x * camera.zoom,
-      y: rect.top + camera.y + node.y * camera.zoom,
-    };
-    openQuickEditor('node', node.id, point.x, point.y);
+    if (mobilePanels.matches) updatePanels();
+    openQuickEditor('node', node.id);
   }
 });
 
@@ -971,90 +1058,44 @@ nodesLayer.addEventListener('click', (event) => {
   if (element) chooseConnectionNode(board.nodes.find(({ id }) => id === element.dataset.id));
 });
 
-nodeForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const current = board.nodes.find(({ id }) => id === selected?.id);
-  if (!current) return;
-  const data = new FormData(nodeForm);
-  try {
-    const name = String(data.get('name')).trim();
-    if (!name) throw new RangeError('Inserisci il nome.');
-    let updated = {
-      ...current, name, provider: String(data.get('provider')).trim(), type: String(data.get('type')),
-      openingCents: nodeIsAccount({ type: String(data.get('type')) }) ? toCents(data.get('opening'), 'Saldo', true) : 0,
-      annualRate: nodeIsAccount({ type: String(data.get('type')) }) ? parseDecimal(data.get('annualRate'), 'Rendimento', -100, 100, 4) : 0,
-    };
-    updated = applySignedFlow(updated, toCents(data.get('flow'), 'Flusso', true));
-    commit({ ...board, nodes: board.nodes.map((node) => node.id === updated.id ? updated : node) }, selected, 'Elemento aggiornato.');
-  } catch (error) {
-    writeStatus(error.message);
-  }
+get('quick-type').addEventListener('change', updateEditorFields);
+get('quick-transfer-mode').addEventListener('change', updateEditorFields);
+get('close-quick-editor').addEventListener('click', () => applyQuickEditor());
+get('quick-delete').addEventListener('click', () => {
+  if (deleteSelection(quickTarget)) closeQuickEditor();
 });
+get('quick-form').addEventListener('input', clearEditorError);
 
-transferForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const current = board.transfers.find(({ id }) => id === selected?.id);
-  if (!current) return;
-  const data = new FormData(transferForm);
-  try {
-    const mode = String(data.get('mode'));
-    const value = parseDecimal(data.get('value'), 'Valore', 0, mode === 'fixed' ? 9_999_999.99 : 100);
-    const updated = {
-      ...current, mode, frequency: String(data.get('frequency')),
-      amountCents: mode === 'fixed' ? Math.round(value * 100) : 0,
-      percent: mode === 'percent' ? value : 0,
-    };
-    commit({ ...board, transfers: board.transfers.map((transfer) => transfer.id === updated.id ? updated : transfer) }, selected, 'Collegamento aggiornato.');
-  } catch (error) {
-    writeStatus(error.message);
-  }
-});
-
-get('delete-node').addEventListener('click', deleteSelection);
-get('delete-transfer').addEventListener('click', deleteSelection);
-function closeQuickEditor() {
-  quickEditor.hidePopover();
-  const layer = quickTarget.kind === 'node' ? nodesLayer : edgesLayer;
-  layer.querySelector('[data-id="' + CSS.escape(quickTarget.id) + '"]')?.focus({ preventScroll: true });
-  quickTarget = null;
+for (const popover of [newNodeDialog, quickEditor]) {
+  popover.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (popover === newNodeDialog) closeNewNode();
+    else closeQuickEditor();
+  });
 }
-
-get('close-quick-editor').addEventListener('click', closeQuickEditor);
-quickEditor.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return;
+get('quick-form').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || !event.target.matches('input') || event.isComposing) return;
   event.preventDefault();
-  event.stopPropagation();
-  closeQuickEditor();
+  applyQuickEditor();
 });
-
 get('quick-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  try {
-    if (quickTarget.kind === 'node') {
-      const current = board.nodes.find(({ id }) => id === quickTarget.id);
-      let updated = {
-        ...current,
-        name: get('quick-name').value.trim(),
-        provider: get('quick-provider').value.trim(),
-        openingCents: nodeIsAccount(current) ? toCents(get('quick-opening').value, 'Disponibilità', true) : 0,
-        annualRate: nodeIsAccount(current) ? parseDecimal(get('quick-rate').value, 'Rendimento', -100, 100, 4) : 0,
-      };
-      if (!updated.name) throw new RangeError('Inserisci il nome.');
-      updated = applySignedFlow(updated, toCents(get('quick-flow').value, 'Flusso', true));
-      if (!commit({ ...board, nodes: board.nodes.map((node) => node.id === updated.id ? updated : node) }, { kind: 'node', id: updated.id }, 'Elemento aggiornato.')) return;
-    } else {
-      const current = board.transfers.find(({ id }) => id === quickTarget.id);
-      const raw = get('quick-transfer-value').value.trim();
-      const percentage = raw.endsWith('%');
-      const value = parseDecimal(percentage ? raw.slice(0, -1) : raw, 'Valore', 0, percentage ? 100 : 9_999_999.99);
-      const updated = { ...current, mode: percentage ? 'percent' : 'fixed', amountCents: percentage ? 0 : Math.round(value * 100), percent: percentage ? value : 0 };
-      if (!commit({ ...board, transfers: board.transfers.map((transfer) => transfer.id === updated.id ? updated : transfer) }, { kind: 'transfer', id: updated.id }, 'Collegamento aggiornato.')) return;
-    }
-    closeQuickEditor();
-  } catch (error) {
-    writeStatus(error.message);
-  }
+  applyQuickEditor();
 });
+
+function dismissOutside(event) {
+  if (nodeDraft && !newNodeDialog.contains(event.target)) closeNewNode(false);
+  if (!quickTarget || quickEditor.contains(event.target)) return;
+  const saved = applyQuickEditor(false);
+  if (saved && event.target.isConnected) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+document.addEventListener('pointerdown', dismissOutside, true);
+document.addEventListener('click', dismissOutside, true);
 
 get('load-example').addEventListener('click', () => {
   if (board.nodes.length && !confirm('Sostituire la board attuale con l’esempio?')) return;
@@ -1088,7 +1129,7 @@ get('simulation-form').addEventListener('submit', (event) => {
 get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon), Number(get('projection-month').value)));
 
 document.addEventListener('keydown', (event) => {
-  if (event.target.matches('input, select, textarea') || quickEditor.matches(':popover-open')) return;
+  if (event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
   if (drag?.kind === 'node' && event.key !== 'Escape') return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();
