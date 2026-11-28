@@ -50,7 +50,16 @@ themePicker.addEventListener('change', (event) => {
 });
 
 const viewport = get('board-viewport');
-const workspace = viewport.closest('.workspace');
+const header = document.querySelector('.site-header');
+const boardTools = document.querySelector('.board-tools');
+const zoomControls = document.querySelector('.zoom-controls');
+const boardStatus = get('board-status');
+const syncHeaderBottom = () => {
+  document.body.style.setProperty('--header-bottom', header.getBoundingClientRect().bottom + 'px');
+};
+new ResizeObserver(syncHeaderBottom).observe(header);
+window.addEventListener('resize', syncHeaderBottom);
+syncHeaderBottom();
 const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
@@ -66,7 +75,7 @@ const mobilePanels = matchMedia('(max-width: 900px)');
 const nodesPanel = get('nodes-panel');
 const toggleNodes = get('toggle-nodes');
 const grid = 20;
-const minZoom = .025;
+const minZoom = .01;
 const world = { width: 6400, height: 4400 };
 let board = { nodes: [], transfers: [] };
 let camera = { x: 0, y: 0, zoom: 1 };
@@ -184,7 +193,7 @@ function nodeName(key) {
 }
 
 function writeStatus(message) {
-  get('board-status').textContent = message;
+  boardStatus.textContent = message;
 }
 
 function validateSavedBoard(value) {
@@ -296,7 +305,6 @@ function updatePanels(open = false) {
   if (!visible && nodesPanel.contains(document.activeElement)) toggleNodes.focus();
   nodesPanel.hidden = !visible;
   toggleNodes.setAttribute('aria-expanded', String(visible));
-  workspace.classList.toggle('nodes-panel-closed', !mobile && !visible);
 }
 
 function screenToWorld(clientX, clientY) {
@@ -319,8 +327,40 @@ function applyCamera() {
   saveCamera();
 }
 
-function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + viewport.clientWidth / 2,
-  clientY = viewport.getBoundingClientRect().top + viewport.clientHeight / 2) {
+function visibleBoardFrame(contentWidth = 1, contentHeight = 1) {
+  const gap = 8;
+  const chrome = header.getBoundingClientRect();
+  const controls = boardTools.getBoundingClientRect();
+  const status = boardStatus.getBoundingClientRect();
+  const panelRight = nodesPanel.hidden ? 0 : nodesPanel.getBoundingClientRect().right;
+  const frame = {
+    left: Math.max(chrome.left, panelRight + gap),
+    right: chrome.right,
+    top: Math.max(chrome.bottom, status.bottom) + gap,
+    bottom: controls.top - gap,
+  };
+
+  const navigation = zoomControls.getBoundingClientRect();
+  const leftOfNavigation = { ...frame, right: Math.min(frame.right, navigation.left - gap) };
+  const aboveNavigation = { ...frame, bottom: Math.min(frame.bottom, navigation.top - gap) };
+  const fitScale = (area) => Math.min(
+    (area.right - area.left) / contentWidth, (area.bottom - area.top) / contentHeight,
+  );
+  const best = fitScale(leftOfNavigation) > fitScale(aboveNavigation) ? leftOfNavigation : aboveNavigation;
+  return fitScale(best) > 0 ? best : frame;
+}
+
+function visibleBoardCenter() {
+  const area = visibleBoardFrame();
+  return { x: (area.left + area.right) / 2, y: (area.top + area.bottom) / 2 };
+}
+
+function setZoom(nextZoom, clientX, clientY) {
+  if (clientX === undefined) {
+    const center = visibleBoardCenter();
+    clientX = center.x;
+    clientY = center.y;
+  }
   const rect = viewport.getBoundingClientRect();
   const oldZoom = camera.zoom;
   const zoom = Math.max(minZoom, Math.min(2, nextZoom));
@@ -333,7 +373,9 @@ function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + vie
 }
 
 function centerBoard() {
-  camera = { x: (viewport.clientWidth - world.width) / 2, y: (viewport.clientHeight - world.height) / 2, zoom: 1 };
+  const center = visibleBoardCenter();
+  const rect = viewport.getBoundingClientRect();
+  camera = { x: center.x - rect.left - world.width / 2, y: center.y - rect.top - world.height / 2, zoom: 1 };
 }
 
 function fitView() {
@@ -349,13 +391,17 @@ function fitView() {
       right: Math.max(area.right, node.x + size.width), bottom: Math.max(area.bottom, node.y + size.height),
     };
   }, { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
-  const padding = Math.min(90, viewport.clientWidth / 8, viewport.clientHeight / 8);
-  const zoom = Math.max(minZoom, Math.min(1.2,
-    (viewport.clientWidth - padding * 2) / (bounds.right - bounds.left),
-    (viewport.clientHeight - padding * 2) / (bounds.bottom - bounds.top)));
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  const frame = visibleBoardFrame(width, height);
+  const frameWidth = frame.right - frame.left;
+  const frameHeight = frame.bottom - frame.top;
+  const padding = Math.min(64, frameWidth / 8, frameHeight / 8);
+  const zoom = Math.max(minZoom, Math.min(1.2, (frameWidth - padding * 2) / width, (frameHeight - padding * 2) / height));
+  const rect = viewport.getBoundingClientRect();
   camera.zoom = zoom;
-  camera.x = (viewport.clientWidth - (bounds.right - bounds.left) * zoom) / 2 - bounds.left * zoom;
-  camera.y = (viewport.clientHeight - (bounds.bottom - bounds.top) * zoom) / 2 - bounds.top * zoom;
+  camera.x = frame.left - rect.left + (frameWidth - width * zoom) / 2 - bounds.left * zoom;
+  camera.y = frame.top - rect.top + (frameHeight - height * zoom) / 2 - bounds.top * zoom;
   applyCamera();
 }
 
@@ -763,12 +809,14 @@ function renderNodeList(firstMonth) {
     item.append(createText('list-name', label), createAmount('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
     item.addEventListener('click', () => {
       updateSelection({ kind: 'node', id: node.id });
+      if (mobilePanels.matches) updatePanels();
       const size = nodeSize(node);
-      camera.x = viewport.clientWidth / 2 - (node.x + size.width / 2) * camera.zoom;
-      camera.y = viewport.clientHeight / 2 - (node.y + size.height / 2) * camera.zoom;
+      const center = visibleBoardCenter();
+      const rect = viewport.getBoundingClientRect();
+      camera.x = center.x - rect.left - (node.x + size.width / 2) * camera.zoom;
+      camera.y = center.y - rect.top - (node.y + size.height / 2) * camera.zoom;
       applyCamera();
       if (mobilePanels.matches) {
-        updatePanels();
         viewport.focus({ preventScroll: true });
       } else {
         list.querySelector('[data-id="' + CSS.escape(node.id) + '"]')?.focus({ preventScroll: true });
@@ -882,12 +930,11 @@ function pointAnchor(x, y) {
 }
 
 function openNewNode(clientX = null, clientY = null, origin = connectFrom, trigger = viewport) {
-  const rect = viewport.getBoundingClientRect();
-  const x = clientX ?? rect.left + viewport.clientWidth / 2;
-  const y = clientY ?? rect.top + viewport.clientHeight / 2;
-  nodeDraft = { position: screenToWorld(x, y), origin: origin?.id, trigger };
+  const center = clientX === null ? visibleBoardCenter() : { x: clientX, y: clientY };
+  nodeDraft = { position: screenToWorld(center.x, center.y), origin: origin?.id, trigger };
   get('new-node-preview').replaceChildren();
-  placePopover(newNodeDialog, clientX === null ? trigger.getBoundingClientRect() : pointAnchor(x, y));
+  const anchor = clientX === null && trigger !== viewport ? trigger.getBoundingClientRect() : pointAnchor(center.x, center.y);
+  placePopover(newNodeDialog, anchor);
   get('new-node-form').querySelector('button[name="type"]').focus({ preventScroll: true });
 }
 
@@ -1213,6 +1260,26 @@ viewport.addEventListener('pointercancel', () => {
   selectionBox.hidden = true;
   viewport.classList.remove('is-panning');
   render();
+});
+
+viewport.addEventListener('focusin', (event) => {
+  if (!event.target.matches(':focus-visible')) return;
+  const item = event.target.closest('.board-node, .edge-group');
+  if (!item) return;
+  const rect = item.getBoundingClientRect();
+  const frame = visibleBoardFrame(rect.width, rect.height);
+  const offset = (start, end, minimum, maximum) => {
+    if (end - start > maximum - minimum) return (minimum + maximum - start - end) / 2;
+    if (start < minimum) return minimum - start;
+    if (end > maximum) return maximum - end;
+    return 0;
+  };
+  const dx = offset(rect.left, rect.right, frame.left, frame.right);
+  const dy = offset(rect.top, rect.bottom, frame.top, frame.bottom);
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+  camera.x += dx;
+  camera.y += dy;
+  applyCamera();
 });
 
 viewport.addEventListener('keydown', (event) => {
