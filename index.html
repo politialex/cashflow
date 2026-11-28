@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=scenarios-and-themes">
-  <script src="./public/app.js?v=scenarios-and-themes" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=shared-expenses">
+  <script src="./public/app.js?v=shared-expenses" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -107,7 +107,13 @@
           <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
         </select></div>
         <div class="quick-account-field field"><label for="quick-opening">Saldo iniziale (€)</label><input id="quick-opening" data-private-input name="opening" inputmode="decimal"></div>
-        <div class="field"><label for="quick-flow">Importo del flusso (€)</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
+        <div id="quick-flow-field" class="field"><label for="quick-flow">Importo del flusso (€)</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
+        <label id="quick-share-toggle-field" for="quick-share-enabled" hidden><input id="quick-share-enabled" type="checkbox"> Spesa condivisa</label>
+        <div id="quick-share-fields" class="field" hidden>
+          <div class="field"><label for="quick-share-total">Spesa totale (€)</label><input id="quick-share-total" data-private-input inputmode="decimal"></div>
+          <div class="field"><label for="quick-share-people">Partecipanti (te incluso)</label><input id="quick-share-people" type="number" min="1" step="1"></div>
+          <p class="field-help">La tua quota <output id="quick-share-amount" for="quick-share-total quick-share-people"></output></p>
+        </div>
         <div class="field"><label for="quick-schedule">Cadenza del flusso</label><select id="quick-schedule" name="schedule">
           <option value="">Mensile, dal mese iniziale</option><option value="monthly">Mensile con data</option>
           <option value="annual">Annuale, importo intero</option><option value="installments">Annuale, in 12 quote</option>

@@ -318,6 +318,9 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
 .node-type-grid button { display: grid; gap: 5px; min-height: 78px; padding: 13px; text-align: left; box-shadow: 0 1px 0 #ffffff08 inset; }.node-type-grid strong { font-size: .82rem; }.node-type-grid span { color: var(--muted); font-size: .67rem; }
 .context-popover { position: fixed; inset: auto; max-width: calc(100% - 24px); max-height: calc(100dvh - 24px); overflow: auto; margin: 0; padding: 13px; border-radius: 4px; }
 #quick-editor { width: 310px; }
+#quick-share-toggle-field { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+#quick-share-enabled { width: 16px; min-height: 16px; margin: 0; accent-color: var(--accent); }
+#quick-share-amount { color: var(--text); font-weight: 700; }
 #new-node-dialog { width: 490px; }
 .node-chooser-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, .8fr); gap: 12px; }
 #new-node-dialog .node-type-grid button { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 7px; }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { simulateBoard } from '../public/board-model.js';
+import { sharedExpenseShareCents, simulateBoard } from '../public/board-model.js';
 
 function node(id, overrides = {}) {
   return {
@@ -16,6 +16,50 @@ function node(id, overrides = {}) {
 function transfer(id, from, to, overrides = {}) {
   return { id, from, to, mode: 'fixed', amountCents: 1_000, frequency: 'monthly', ...overrides };
 }
+
+test('rounds shared expenses to the nearest cent, rounding half a cent up', () => {
+  assert.equal(sharedExpenseShareCents(1_699, 6), 283);
+  assert.equal(sharedExpenseShareCents(1_701, 6), 284);
+  assert.equal(sharedExpenseShareCents(1, 3), 0);
+  assert.equal(sharedExpenseShareCents(0, 2), 0);
+  assert.throws(() => sharedExpenseShareCents(1_699, 0), /partecipanti/);
+  assert.throws(() => sharedExpenseShareCents(1_699, 2.5), /partecipanti/);
+  assert.throws(() => sharedExpenseShareCents(-1, 6), /Totale/);
+});
+
+test('charges the personal share once in the selected month, with or without an account', () => {
+  const expense = node('spread', {
+    type: 'expense', monthlyOutCents: 1_699,
+    sharedExpense: { totalCents: 1_699, participants: 6 },
+    schedule: { frequency: 'once', startDate: '2027-01-15' },
+  });
+  const account = node('bank', { type: 'bank', openingCents: 12_000 });
+  const linked = {
+    nodes: [account, expense],
+    transfers: [transfer('pay', 'bank', 'spread', { amountCents: 1_699 })],
+  };
+  const [december, january, february] = simulateBoard(linked, 3, '2026-12');
+  assert.equal(december.nodes[0].outflow, 0);
+  assert.equal(january.nodes[0].balance, 11_717);
+  assert.equal(january.nodes[1].outflow, 283);
+  assert.equal(january.nodes[1].balance, 0);
+  assert.equal(february.nodes[0].outflow, 0);
+  assert.equal(january.timeline.find(({ kind }) => kind === 'transfer').day, 15);
+  const standalone = simulateBoard({ nodes: [expense], transfers: [] }, 1, '2027-01');
+  assert.equal(standalone[0].nodes[0].balance, -283);
+  assert.equal(linked.transfers[0].amountCents, 1_699);
+});
+
+test('rejects a shared expense with multiple accounts or an incompatible direction', () => {
+  const nodes = [
+    node('a', { type: 'bank' }), node('b', { type: 'cash' }),
+    node('shared', { type: 'expense', sharedExpense: { totalCents: 1_699, participants: 6 } }),
+  ];
+  assert.throws(() => simulateBoard({
+    nodes, transfers: [transfer('a-s', 'a', 'shared'), transfer('b-s', 'b', 'shared')],
+  }, 1), /un solo conto/);
+  assert.throws(() => simulateBoard({ nodes, transfers: [transfer('s-a', 'shared', 'a')] }, 1), /un solo conto/);
+});
 
 test('applies external flows and then distributes same-month credits across multiple hops', () => {
   const board = {

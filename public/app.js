@@ -1,4 +1,4 @@
-import { simulateBoard } from './board-model.js';
+import { accountTypes, sharedExpenseShareCents, simulateBoard } from './board-model.js?v=shared-expenses';
 import { currentMonth } from './flow-calendar.js';
 import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-storage.js';
 
@@ -11,7 +11,6 @@ const types = {
   bank: 'Conto bancario', deposit: 'Conto deposito', investment: 'Investimento',
   savings: 'Risparmio', cash: 'Liquidità', source: 'Entrata', expense: 'Spesa', other: 'Altro',
 };
-const accountTypes = new Set(['bank', 'deposit', 'investment', 'savings', 'cash']);
 const get = (id) => document.getElementById(id);
 const themeButton = get('toggle-theme');
 const themePicker = get('theme-picker');
@@ -144,7 +143,9 @@ const money = (cents) => euro.format(cents / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
 const decimalInput = (number) => String(number).replace('.', ',');
 const providerName = (node) => typeof node.provider === 'string' ? node.provider.trim() : '';
-const signedFlow = (node) => node.monthlyInCents - node.monthlyOutCents;
+const signedFlow = (node) => node.monthlyInCents - (node.sharedExpense
+  ? sharedExpenseShareCents(node.sharedExpense.totalCents, node.sharedExpense.participants)
+  : node.monthlyOutCents);
 const id = () => crypto.randomUUID();
 const snap = (value) => Math.round(value / grid) * grid;
 const nodeIsAccount = (node) => accountTypes.has(node.type);
@@ -397,7 +398,11 @@ function makeTransfer(from, to) {
     amountCents: inferredTransferAmount(from, to), percent: 0, frequency: 'monthly',
   };
   const owner = linkedFlowNode(from, to);
-  return owner?.schedule ? syncFlowTransfer(transfer, owner) : transfer;
+  return owner?.schedule || owner?.sharedExpense ? syncFlowTransfer(transfer, owner) : transfer;
+}
+
+function sharedExpenseForTransfer(transfer) {
+  return board.nodes.find((node) => node.id === transfer.to && node.sharedExpense);
 }
 
 function transferAmount(transfer, firstMonth) {
@@ -915,10 +920,28 @@ function updateScheduleFields() {
 }
 
 function updateEditorFields() {
-  const account = accountTypes.has(get('quick-type').value);
+  const type = get('quick-type').value;
+  const account = accountTypes.has(type);
   for (const field of quickEditor.querySelectorAll('.quick-account-field')) field.hidden = !account;
+  const expense = type === 'expense';
+  const share = expense && get('quick-share-enabled').checked;
+  get('quick-share-toggle-field').hidden = !expense;
+  get('quick-share-fields').hidden = !share;
+  get('quick-flow-field').hidden = share;
+  if (share) updateShareQuote();
   get('quick-transfer-value').labels[0].textContent = get('quick-transfer-mode').value === 'percent'
     ? 'Percentuale delle entrate (%)' : 'Importo (€)';
+}
+
+function updateShareQuote() {
+  let quote = '—';
+  try {
+    const total = toCents(get('quick-share-total').value, 'Totale della spesa');
+    quote = money(sharedExpenseShareCents(total, Number(get('quick-share-people').value)));
+  } catch {
+    // An incomplete edit has no preview and is checked when the editor closes.
+  }
+  writeAmount(get('quick-share-amount'), quote);
 }
 
 function clearEditorError() {
@@ -949,6 +972,9 @@ function openQuickEditor(kind, key, clientX = null, clientY = null) {
       name: node.name, provider: providerName(node), type: node.type, opening: moneyInput(node.openingCents),
       flow: (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node)), annualRate: decimalInput(node.annualRate),
     });
+    get('quick-share-enabled').checked = Boolean(node.sharedExpense);
+    get('quick-share-total').value = moneyInput(node.sharedExpense?.totalCents ?? Math.abs(signedFlow(node)));
+    get('quick-share-people').value = node.sharedExpense?.participants ?? 2;
     const schedule = node.schedule;
     get('quick-schedule').value = schedule?.annualDistribution === 'installments' ? 'installments' : schedule?.frequency ?? '';
     get('quick-schedule-start').type = schedule?.frequency === 'once' ? 'month' : 'date';
@@ -959,12 +985,14 @@ function openQuickEditor(kind, key, clientX = null, clientY = null) {
   } else {
     get('quick-title').textContent = 'Modifica collegamento';
     get('quick-transfer-route').textContent = nodeName(transfer.from) + ' → ' + nodeName(transfer.to);
+    const shared = sharedExpenseForTransfer(transfer);
     setValues(form, {
-      mode: transfer.mode, frequency: transfer.frequency,
-      value: transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent),
+      mode: shared ? 'fixed' : transfer.mode, frequency: shared ? 'monthly' : transfer.frequency,
+      value: shared ? moneyInput(Math.abs(signedFlow(shared)))
+        : transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent),
     });
   }
-  const linked = Boolean(transfer?.schedule);
+  const linked = Boolean(transfer && (transfer.schedule || sharedExpenseForTransfer(transfer)));
   get('quick-linked-flow').hidden = !linked;
   for (const id of ['quick-transfer-mode', 'quick-transfer-frequency', 'quick-transfer-value']) get(id).disabled = linked;
   updateEditorFields();
@@ -1008,11 +1036,23 @@ function applyQuickEditor(restoreFocus = true) {
       const provider = read('quick-provider').trim();
       const type = read('quick-type');
       const account = accountTypes.has(type);
+      let sharing;
+      let flow;
+      if (type === 'expense' && get('quick-share-enabled').checked) {
+        const totalCents = read('quick-share-total', (value) => toCents(value, 'Totale della spesa'));
+        const participants = read('quick-share-people', Number);
+        flow = -sharedExpenseShareCents(totalCents, participants);
+        sharing = current.sharedExpense?.totalCents === totalCents && current.sharedExpense.participants === participants
+          ? current.sharedExpense : { ...current.sharedExpense, totalCents, participants };
+      } else {
+        flow = read('quick-flow', (value) => toCents(value, 'Flusso', true));
+      }
       updated = applySignedFlow({
         ...current, name, type,
         openingCents: account ? read('quick-opening', (value) => toCents(value, 'Saldo iniziale', true)) : 0,
         annualRate: account ? read('quick-rate', (value) => parseDecimal(value, 'Rendimento', -100, 100, 4)) : 0,
-      }, read('quick-flow', (value) => toCents(value, 'Flusso', true)));
+      }, flow);
+      if (sharing !== current.sharedExpense) updated.sharedExpense = sharing;
       if (provider !== providerName(current)) updated.provider = provider;
       const scheduleMode = read('quick-schedule');
       let schedule;
@@ -1028,7 +1068,8 @@ function applyQuickEditor(restoreFocus = true) {
         if (scheduleMode === 'interval') schedule.intervalMonths = read('quick-schedule-interval', Number);
         else delete schedule.intervalMonths;
       }
-      if (JSON.stringify(schedule) !== JSON.stringify(current.schedule) || signedFlow(updated) !== signedFlow(current)) {
+      if (JSON.stringify(schedule) !== JSON.stringify(current.schedule) || signedFlow(updated) !== signedFlow(current)
+        || sharing !== current.sharedExpense) {
         updated.schedule = schedule;
         const links = board.transfers.filter(({ from, to }) => from === id || to === id);
         const link = links.length === 1 ? links[0] : null;
@@ -1038,14 +1079,14 @@ function applyQuickEditor(restoreFocus = true) {
         const matching = owner?.id === id && (link.schedule
           || (link.frequency === 'monthly' && ((link.mode === 'fixed' && link.amountCents === Math.abs(signedFlow(current)))
             || (current.type === 'source' && link.mode === 'percent' && link.percent === 100))));
-        if (matching && updated.type === current.type) {
+        if ((matching || (owner?.id === id && (sharing || current.sharedExpense))) && updated.type === current.type) {
           transfers = transfers.map((item) => item === link ? syncFlowTransfer(item, updated) : item);
         } else if (link?.schedule && updated.type !== current.type) {
           throw new RangeError('Rimuovi prima la cadenza collegata al nodo.');
         }
       }
     } else {
-      if (current.schedule) {
+      if (current.schedule || sharedExpenseForTransfer(current)) {
         closeQuickEditor(restoreFocus);
         return true;
       }
@@ -1359,6 +1400,9 @@ nodesLayer.addEventListener('click', (event) => {
 });
 
 get('quick-type').addEventListener('change', updateEditorFields);
+get('quick-share-enabled').addEventListener('change', updateEditorFields);
+get('quick-share-total').addEventListener('input', updateShareQuote);
+get('quick-share-people').addEventListener('input', updateShareQuote);
 get('quick-schedule').addEventListener('change', updateScheduleFields);
 get('quick-transfer-mode').addEventListener('change', updateEditorFields);
 get('close-quick-editor').addEventListener('click', () => applyQuickEditor());

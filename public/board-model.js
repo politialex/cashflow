@@ -3,11 +3,21 @@ import { currentMonth, formatMonth, monthIndex, occurrence, occurrenceAmount, re
 const MAX_CENTS = 999_999_999;
 const MAX_MONTHS = 120;
 const FREQUENCIES = new Set(['monthly', 'annual', 'once']);
+export const accountTypes = new Set(['bank', 'deposit', 'investment', 'savings', 'cash']);
 
 function validateCents(value, minimum, field) {
   if (!Number.isSafeInteger(value) || value < minimum || value > MAX_CENTS) {
     throw new RangeError(`${field} fuori intervallo.`);
   }
+}
+
+export function sharedExpenseShareCents(totalCents, participants) {
+  validateCents(totalCents, 0, 'Totale della spesa');
+  if (!Number.isSafeInteger(participants) || participants < 1) {
+    throw new RangeError('Inserisci un numero intero positivo di partecipanti.');
+  }
+  const share = Math.floor(totalCents / participants);
+  return share + Number(totalCents % participants >= Math.ceil(participants / 2));
 }
 
 function validatePercentage(value, minimum, field) {
@@ -40,6 +50,9 @@ function validateBoard(board, months) {
     validateCents(node.monthlyInCents, 0, 'Entrata mensile');
     validateCents(node.monthlyOutCents, 0, 'Uscita mensile');
     validatePercentage(node.annualRate, -100, 'Tasso annuo');
+    if (node.sharedExpense !== undefined && (!node.sharedExpense || node.type !== 'expense' || node.monthlyInCents !== 0)) {
+      throw new RangeError('La quota personale si applica solo alle spese.');
+    }
   }
 
   const transferIds = new Set();
@@ -119,9 +132,25 @@ export function simulateBoard(board, months, startMonth = null) {
   const first = monthIndex(startMonth ?? currentMonth());
   if (first + months > 10000 * 12) throw new RangeError('La simulazione supera il calendario disponibile.');
 
-  const financialNodes = board.nodes.map(({ id, openingCents, annualRate, monthlyInCents, monthlyOutCents, schedule }) =>
-    ({ id, openingCents, annualRate, monthlyInCents, monthlyOutCents, schedule: readSchedule(schedule) }));
+  const financialNodes = board.nodes.map(({
+    id, type, openingCents, annualRate, monthlyInCents, monthlyOutCents, schedule, sharedExpense,
+  }) => ({
+    id, type, openingCents, annualRate, monthlyInCents, sharedExpense,
+    monthlyOutCents: sharedExpense ? sharedExpenseShareCents(sharedExpense.totalCents, sharedExpense.participants) : monthlyOutCents,
+    schedule: readSchedule(schedule),
+  }));
+  const financialNodesById = new Map(financialNodes.map((node) => [node.id, node]));
+  const linkedSharedExpenses = new Set();
   const orderedTransfers = transfersInFlowOrder(financialNodes, board.transfers).map((transfer) => {
+    const from = financialNodesById.get(transfer.from);
+    const to = financialNodesById.get(transfer.to);
+    if (from.sharedExpense || (to.sharedExpense && (!accountTypes.has(from.type) || linkedSharedExpenses.has(to.id)))) {
+      throw new RangeError('Collega una spesa condivisa a un solo conto, con una freccia dal conto alla spesa.');
+    }
+    if (to.sharedExpense) {
+      linkedSharedExpenses.add(to.id);
+      return { ...transfer, mode: 'fixed', amountCents: to.monthlyOutCents, frequency: 'monthly', schedule: to.schedule };
+    }
     const schedule = readSchedule(transfer.schedule);
     if (schedule?.installments && transfer.mode === 'percent') {
       throw new RangeError('Le rate annuali richiedono un bonifico di importo fisso.');
