@@ -1,0 +1,117 @@
+:root[data-cf-theme="dark"] {
+  --cf-canvas: #14171e;
+  --cf-chrome: #191d25;
+  --cf-panel: #20242e;
+  --cf-raised: #2f3542;
+  --cf-card: #232833;
+  --cf-control: var(--cf-raised);
+  --cf-control-hover: #3b4352;
+  --cf-border: #353c4b;
+  --cf-border-strong: #808da6;
+  --cf-text: #f1f2f6;
+  --cf-muted: #a4b0be;
+  --cf-accent: #1e90ff;
+  --cf-accent-hover: #70a1ff;
+  --cf-accent-ink: #101621;
+  --cf-positive: #2ed573;
+  --cf-danger: #ff6b81;
+  --cf-outside-board: #070707;
+  --cf-overlay-shadow: 0 8px 28px rgb(0 0 0 / 36%), 0 0 20px color-mix(in srgb, var(--cf-outside-board) 55%, transparent);
+  --cf-board-dot: #282828;
+  --cf-edge: #777;
+  --cf-inset: #12151b;
+  --cf-source-card: #153326;
+  --cf-source-ink: #7bed9f;
+  --cf-expense-card: #3d202a;
+  --cf-bank: #70a1ff;
+  --cf-deposit: #7bed9f;
+  --cf-investment: #ff7f50;
+  --cf-savings: #eccc68;
+  --cf-cash: #ffa502;
+}
+
+:root[data-cf-theme="light"] {
+  --cf-canvas: #f5f7fc;
+  --cf-chrome: #fff;
+  --cf-panel: #fff;
+  --cf-raised: #e9edf6;
+  --cf-card: #fff;
+  --cf-control-hover: #dce3f1;
+  --cf-border: #c5cedd;
+  --cf-border-strong: #657389;
+  --cf-text: #172033;
+  --cf-muted: #48566e;
+  --cf-accent: #075dbc;
+  --cf-accent-hover: #054d9a;
+  --cf-accent-ink: #fff;
+  --cf-positive: #126137;
+  --cf-danger: #a91c3c;
+  --cf-outside-board: #e0e6f1;
+  --cf-overlay-shadow: 0 8px 24px rgb(32 53 82 / 18%), 0 0 20px color-mix(in srgb, var(--cf-outside-board) 55%, transparent);
+  --cf-board-dot: #ccd5e6;
+  --cf-edge: #586780;
+  --cf-inset: #f1f4fa;
+  --cf-source-card: #e2f3e7;
+  --cf-source-ink: #126137;
+  --cf-expense-card: #fce7ec;
+  --cf-bank: #105aa5;
+  --cf-deposit: #126137;
+  --cf-investment: #993b11;
+  --cf-savings: #775500;
+  --cf-cash: #884500;
+}
+
+:root[data-cf-theme="contrast"] {
+  --cf-canvas: #000;
+  --cf-chrome: #000;
+  --cf-panel: #000;
+  --cf-raised: #161616;
+  --cf-card: #080808;
+  --cf-control-hover: #333;
+  --cf-border: #aaa;
+  --cf-border-strong: #fff;
+  --cf-text: #fff;
+  --cf-muted: #eee;
+  --cf-accent: #ffec6a;
+  --cf-accent-hover: #fff4ad;
+  --cf-accent-ink: #000;
+  --cf-positive: #83ff9a;
+  --cf-danger: #ff9db0;
+  --cf-outside-board: #161616;
+  --cf-overlay-shadow: 0 8px 24px #000;
+  --cf-board-dot: #242424;
+  --cf-edge: #eee;
+  --cf-inset: #000;
+  --cf-source-card: #07160d;
+  --cf-source-ink: #83ff9a;
+  --cf-expense-card: #19090d;
+  --cf-bank: #9eccff;
+  --cf-deposit: #83ff9a;
+  --cf-investment: #ffc49e;
+  --cf-savings: #ffec6a;
+  --cf-cash: #ffe3a5;
+}
+
+
+:root {
+  --cf-font: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+  --cf-font-mono: "Noto Sans Mono", ui-monospace, monospace;
+  --cf-space-1: 4px; --cf-space-2: 8px; --cf-space-3: 16px; --cf-space-4: 24px; --cf-space-5: 32px;
+  --cf-radius: 4px;
+  --cf-motion-fast: 120ms; --cf-motion-normal: 180ms; --cf-motion-slow: 240ms;
+  --cf-ease: cubic-bezier(.2,.8,.2,1);
+}
+:root[data-cf-theme][data-mantine-color-scheme] {
+  --mantine-color-body: var(--cf-canvas);
+  --mantine-color-text: var(--cf-text);
+  --mantine-color-dimmed: var(--cf-muted);
+  --mantine-color-default: var(--cf-raised);
+  --mantine-color-default-hover: var(--cf-control-hover);
+  --mantine-color-default-color: var(--cf-text);
+  --mantine-color-default-border: var(--cf-border-strong);
+  --mantine-color-blue-filled: var(--cf-accent);
+  --mantine-color-blue-filled-hover: var(--cf-accent-hover);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --cf-motion-fast: 0ms; --cf-motion-normal: 0ms; --cf-motion-slow: 0ms; }
+}

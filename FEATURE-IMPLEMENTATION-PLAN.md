@@ -12,7 +12,7 @@ Questo documento trasforma le idee di prodotto in un piano eseguibile. Deve esse
 4. Implementare prima le fondamenta condivise e poi le funzioni che ne dipendono.
 5. Accompagnare ogni modifica al motore finanziario con test unitari.
 6. Verificare ogni interazione della canvas su desktop e mobile.
-7. Non introdurre React esclusivamente per utilizzare componenti ReactBits. Preferire CSS e Web Animations finché il progetto rimane in JavaScript nativo.
+7. Decisione 28 novembre 2026 (BIT-198): migrare a React con Mantine partendo dal catalogo UI e dai token condivisi in `ui-lab/`. Usare React Bits selettivamente nel prodotto dopo verifica di licenza, accessibilità e performance; non duplicare componenti o riscrivere il motore finanziario. Validare le fondamenta prima della migrazione delle schermate.
 
 ## Definizione degli effort
 
@@ -103,7 +103,7 @@ Queste attività possono essere pianificate indipendentemente.
 - usare transizioni brevi tra 120 e 180 ms;
 - animare `transform` e `opacity` quando possibile;
 - rispettare `prefers-reduced-motion`;
-- evitare una migrazione React motivata soltanto da ReactBits.
+- applicare i token di movimento del catalogo React; evitare una migrazione motivata soltanto da effetti decorativi.
 
 ## Milestone 2 — Flow Model v2
 
