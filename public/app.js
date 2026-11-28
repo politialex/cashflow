@@ -56,6 +56,14 @@ const workspace = viewport.closest('.workspace');
 const fitButton = get('fit-view');
 const fullscreenButton = get('toggle-fullscreen');
 const mapControls = fitButton.parentElement;
+const header = document.querySelector('.site-header');
+const boardTools = document.querySelector('.board-tools');
+const syncHeaderBottom = () => {
+  document.body.style.setProperty('--header-bottom', header.getBoundingClientRect().bottom + 'px');
+};
+new ResizeObserver(syncHeaderBottom).observe(header);
+window.addEventListener('resize', syncHeaderBottom);
+syncHeaderBottom();
 const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
@@ -71,7 +79,7 @@ const mobilePanels = matchMedia('(max-width: 900px)');
 const nodesPanel = get('nodes-panel');
 const toggleNodes = get('toggle-nodes');
 const grid = 20;
-const minZoom = .025;
+const minZoom = .01;
 const world = { width: 6400, height: 4400 };
 let board = { nodes: [], transfers: [] };
 let camera = { x: 0, y: 0, zoom: 1 };
@@ -200,7 +208,7 @@ function nodeName(key) {
 }
 
 function writeStatus(message) {
-  get('board-status').textContent = message;
+  boardStatus.textContent = message;
 }
 
 function validateSavedBoard(value) {
@@ -313,7 +321,6 @@ function updatePanels(open = false) {
   if (!visible && nodesPanel.contains(document.activeElement)) toggleNodes.focus();
   nodesPanel.hidden = !visible;
   toggleNodes.setAttribute('aria-expanded', String(visible));
-  workspace.classList.toggle('nodes-panel-closed', !mobile && !visible);
 }
 
 function screenToWorld(clientX, clientY) {
@@ -336,8 +343,32 @@ function applyCamera() {
   saveCamera();
 }
 
-function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + viewport.clientWidth / 2,
-  clientY = viewport.getBoundingClientRect().top + viewport.clientHeight / 2) {
+function visibleBoardFrame(contentWidth = 1, contentHeight = 1) {
+  const rect = viewport.getBoundingClientRect();
+  const areas = visibleFitAreas();
+  const fitScale = (area) => Math.min(
+    (area.right - area.left) / Math.max(1, contentWidth),
+    (area.bottom - area.top) / Math.max(1, contentHeight),
+  );
+  const fallback = { left: 0, top: 0, right: rect.width, bottom: rect.height };
+  const area = areas.reduce((best, current) => fitScale(current) > fitScale(best) ? current : best, areas[0] ?? fallback);
+  return {
+    left: rect.left + area.left, top: rect.top + area.top,
+    right: rect.left + area.right, bottom: rect.top + area.bottom,
+  };
+}
+
+function visibleBoardCenter() {
+  const area = visibleBoardFrame();
+  return { x: (area.left + area.right) / 2, y: (area.top + area.bottom) / 2 };
+}
+
+function setZoom(nextZoom, clientX, clientY) {
+  if (clientX === undefined) {
+    const center = visibleBoardCenter();
+    clientX = center.x;
+    clientY = center.y;
+  }
   const rect = viewport.getBoundingClientRect();
   const oldZoom = camera.zoom;
   const zoom = Math.max(minZoom, Math.min(2, nextZoom));
@@ -356,7 +387,7 @@ function centerBoard(centerX = viewport.clientWidth / 2, centerY = viewport.clie
 function visibleFitAreas() {
   const frame = viewport.getBoundingClientRect();
   const overlays = [nodesPanel, mapControls,
-    viewport.parentElement.querySelector('.board-tools'), document.querySelector('.site-header')];
+    boardTools, header, get('open-simulation'), get('canvas-simulation')];
   let areas = [{ left: 0, top: 0, right: frame.width, bottom: frame.height }];
   for (const overlay of overlays) {
     if (!overlay) continue;
@@ -867,12 +898,14 @@ function renderNodeList(firstMonth) {
     item.append(createText('list-name', label), createAmount('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
     item.addEventListener('click', () => {
       updateSelection({ kind: 'node', id: node.id });
+      if (mobilePanels.matches) updatePanels();
       const size = nodeSize(node);
-      camera.x = viewport.clientWidth / 2 - (node.x + size.width / 2) * camera.zoom;
-      camera.y = viewport.clientHeight / 2 - (node.y + size.height / 2) * camera.zoom;
+      const center = visibleBoardCenter();
+      const rect = viewport.getBoundingClientRect();
+      camera.x = center.x - rect.left - (node.x + size.width / 2) * camera.zoom;
+      camera.y = center.y - rect.top - (node.y + size.height / 2) * camera.zoom;
       applyCamera();
       if (mobilePanels.matches) {
-        updatePanels();
         viewport.focus({ preventScroll: true });
       } else {
         list.querySelector('[data-id="' + CSS.escape(node.id) + '"]')?.focus({ preventScroll: true });
@@ -1001,12 +1034,11 @@ function pointAnchor(x, y) {
 }
 
 function openNewNode(clientX = null, clientY = null, origin = connectFrom, trigger = viewport) {
-  const rect = viewport.getBoundingClientRect();
-  const x = clientX ?? rect.left + viewport.clientWidth / 2;
-  const y = clientY ?? rect.top + viewport.clientHeight / 2;
-  nodeDraft = { position: screenToWorld(x, y), origin: origin?.id, trigger };
+  const center = clientX === null ? visibleBoardCenter() : { x: clientX, y: clientY };
+  nodeDraft = { position: screenToWorld(center.x, center.y), origin: origin?.id, trigger };
   get('new-node-preview').replaceChildren();
-  placePopover(newNodeDialog, clientX === null ? trigger.getBoundingClientRect() : pointAnchor(x, y));
+  const anchor = clientX === null && trigger !== viewport ? trigger.getBoundingClientRect() : pointAnchor(center.x, center.y);
+  placePopover(newNodeDialog, anchor);
   get('new-node-form').querySelector('button[name="type"]').focus({ preventScroll: true });
 }
 
@@ -1368,6 +1400,26 @@ viewport.addEventListener('pointercancel', () => {
   selectionBox.hidden = true;
   viewport.classList.remove('is-panning');
   render();
+});
+
+viewport.addEventListener('focusin', (event) => {
+  if (!event.target.matches(':focus-visible')) return;
+  const item = event.target.closest('.board-node, .edge-group');
+  if (!item) return;
+  const rect = item.getBoundingClientRect();
+  const frame = visibleBoardFrame(rect.width, rect.height);
+  const offset = (start, end, minimum, maximum) => {
+    if (end - start > maximum - minimum) return (minimum + maximum - start - end) / 2;
+    if (start < minimum) return minimum - start;
+    if (end > maximum) return maximum - end;
+    return 0;
+  };
+  const dx = offset(rect.left, rect.right, frame.left, frame.right);
+  const dy = offset(rect.top, rect.bottom, frame.top, frame.bottom);
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+  camera.x += dx;
+  camera.y += dy;
+  applyCamera();
 });
 
 viewport.addEventListener('keydown', (event) => {
