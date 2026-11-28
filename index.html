@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=node-link-gesture">
-  <script src="./public/app.js?v=node-link-gesture" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=map-controls">
+  <script src="./public/app.js?v=map-controls" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -69,6 +69,12 @@
           <button id="zoom-in" type="button" aria-label="Aumenta zoom">+</button>
           <button id="zoom-out" type="button" aria-label="Riduci zoom">−</button>
           <button id="fit-view" type="button" aria-label="Adatta la vista a tutti i nodi">Adatta</button>
+          <button id="toggle-fullscreen" type="button" aria-label="Schermo intero" aria-pressed="false" title="Attiva schermo intero">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path class="fullscreen-enter" d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"></path>
+              <path class="fullscreen-exit" d="M4 9h5V4m11 5h-5V4M9 20v-5H4m11 5v-5h5"></path>
+            </svg>
+          </button>
           <output id="zoom-level" aria-label="Livello di zoom">100%</output>
         </div>
         <div class="board-tools">

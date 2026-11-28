@@ -51,6 +51,9 @@ themePicker.addEventListener('change', (event) => {
 
 const viewport = get('board-viewport');
 const workspace = viewport.closest('.workspace');
+const fitButton = get('fit-view');
+const fullscreenButton = get('toggle-fullscreen');
+const mapControls = fitButton.parentElement;
 const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
@@ -83,6 +86,7 @@ let quickTarget = null;
 let history = [];
 let future = [];
 let desktopNodesOpen = true;
+let fullscreenChanging = false;
 let saveRevision = 0;
 let backupRead = 0;
 let pendingBackup;
@@ -332,31 +336,110 @@ function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + vie
   applyCamera();
 }
 
-function centerBoard() {
-  camera = { x: (viewport.clientWidth - world.width) / 2, y: (viewport.clientHeight - world.height) / 2, zoom: 1 };
+function centerBoard(centerX = viewport.clientWidth / 2, centerY = viewport.clientHeight / 2) {
+  camera = { x: centerX - world.width / 2, y: centerY - world.height / 2, zoom: 1 };
 }
 
-function fitView() {
-  if (!board.nodes.length) {
-    centerBoard();
-    applyCamera();
-    return;
+function visibleFitAreas() {
+  const frame = viewport.getBoundingClientRect();
+  const overlays = [nodesPanel, mapControls,
+    viewport.parentElement.querySelector('.board-tools'), document.querySelector('.site-header')];
+  let areas = [{ left: 0, top: 0, right: frame.width, bottom: frame.height }];
+  for (const overlay of overlays) {
+    if (!overlay) continue;
+    const rect = overlay.getBoundingClientRect();
+    const blocked = {
+      left: rect.left - frame.left - 8, right: rect.right - frame.left + 8,
+      top: rect.top - frame.top - 8, bottom: rect.bottom - frame.top + 8,
+    };
+    if (!rect.width || !rect.height) continue;
+    areas = areas.flatMap((area) => {
+      if (blocked.right <= area.left || blocked.left >= area.right
+        || blocked.bottom <= area.top || blocked.top >= area.bottom) return [area];
+      return [
+        { ...area, right: blocked.left },
+        { ...area, left: blocked.right },
+        { ...area, bottom: blocked.top },
+        { ...area, top: blocked.bottom },
+      ].filter((part) => part.left < part.right && part.top < part.bottom);
+    });
   }
-  const bounds = board.nodes.reduce((area, node) => {
+  return areas;
+}
+
+function fitView(nodes = board.nodes) {
+  // Keyboard focus can scroll an overflow-hidden viewport before the camera is fitted.
+  viewport.scrollTo(0, 0);
+  const bounds = nodes.reduce((area, node) => {
     const size = nodeSize(node);
     return {
       left: Math.min(area.left, node.x), top: Math.min(area.top, node.y),
       right: Math.max(area.right, node.x + size.width), bottom: Math.max(area.bottom, node.y + size.height),
     };
   }, { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
-  const padding = Math.min(90, viewport.clientWidth / 8, viewport.clientHeight / 8);
-  const zoom = Math.max(minZoom, Math.min(1.2,
-    (viewport.clientWidth - padding * 2) / (bounds.right - bounds.left),
-    (viewport.clientHeight - padding * 2) / (bounds.bottom - bounds.top)));
+  const width = nodes.length ? bounds.right - bounds.left : world.width;
+  const height = nodes.length ? bounds.bottom - bounds.top : world.height;
+  const frame = { left: 0, top: 0, right: viewport.clientWidth, bottom: viewport.clientHeight };
+  function scale(area) {
+    const availableWidth = area.right - area.left;
+    const availableHeight = area.bottom - area.top;
+    const padding = Math.min(90, availableWidth / 8, availableHeight / 8);
+    return Math.min((availableWidth - padding * 2) / width, (availableHeight - padding * 2) / height);
+  }
+  const areas = visibleFitAreas();
+  const area = areas.reduce((best, current) => scale(current) > scale(best) ? current : best, areas[0] ?? frame);
+  const centerX = (area.left + area.right) / 2;
+  const centerY = (area.top + area.bottom) / 2;
+  if (!nodes.length) {
+    centerBoard(centerX, centerY);
+    applyCamera();
+    return;
+  }
+  const zoom = Math.max(minZoom, Math.min(1.2, scale(area)));
   camera.zoom = zoom;
-  camera.x = (viewport.clientWidth - (bounds.right - bounds.left) * zoom) / 2 - bounds.left * zoom;
-  camera.y = (viewport.clientHeight - (bounds.bottom - bounds.top) * zoom) / 2 - bounds.top * zoom;
+  camera.x = centerX - (bounds.left + width / 2) * zoom;
+  camera.y = centerY - (bounds.top + height / 2) * zoom;
   applyCamera();
+}
+
+function fitSelection() {
+  if (mobilePanels.matches && !nodesPanel.hidden) updatePanels();
+  const transfer = selected?.kind === 'transfer' && board.transfers.find(({ id }) => id === selected.id);
+  const nodes = board.nodes.filter(({ id }) => transfer ? id === transfer.from || id === transfer.to : isNodeSelected(id));
+  fitView(nodes.length ? nodes : board.nodes);
+}
+
+function updateFitControl() {
+  const centered = Boolean(selected);
+  fitButton.textContent = centered ? 'Centra' : 'Adatta';
+  fitButton.setAttribute('aria-label', centered ? 'Centra la selezione' : 'Adatta la vista a tutti i nodi');
+}
+
+function updateFullscreenControl() {
+  const enabled = document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === 'function';
+  const fullscreen = document.fullscreenElement === document.documentElement;
+  fullscreenButton.setAttribute('aria-pressed', String(fullscreen));
+  fullscreenButton.setAttribute('aria-disabled', String(!enabled));
+  fullscreenButton.title = !enabled ? 'Schermo intero non disponibile'
+    : fullscreen ? 'Esci dallo schermo intero' : 'Attiva schermo intero';
+}
+
+async function toggleFullscreen() {
+  if (fullscreenChanging) return;
+  if (fullscreenButton.getAttribute('aria-disabled') === 'true') {
+    writeStatus('Schermo intero non disponibile in questo browser o contesto.');
+    return;
+  }
+  fullscreenChanging = true;
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch {
+    writeStatus('Impossibile cambiare modalità schermo intero.');
+  } finally {
+    fullscreenChanging = false;
+    updateFullscreenControl();
+  }
 }
 
 function makeNode(type, x, y) {
@@ -513,6 +596,7 @@ function setCardSelection(card, name) {
 
 function updateSelection(selection) {
   selected = selection;
+  updateFitControl();
   for (const card of nodesLayer.children) {
     setCardSelection(card, card.querySelector('.node-title').textContent);
   }
@@ -844,6 +928,7 @@ function drawProjection(periods, selection) {
 }
 
 function render() {
+  updateFitControl();
   const periods = simulateBoard(board, horizon, projectionStart);
   renderBoard(periods[0]);
   renderNodeList(periods[0]);
@@ -1249,7 +1334,14 @@ updatePanels();
 
 get('zoom-in').addEventListener('click', () => setZoom(camera.zoom + .15));
 get('zoom-out').addEventListener('click', () => setZoom(camera.zoom - .15));
-get('fit-view').addEventListener('click', fitView);
+fitButton.addEventListener('click', fitSelection);
+fullscreenButton.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', updateFullscreenControl);
+updateFullscreenControl();
+new ResizeObserver(() => {
+  const focused = document.activeElement;
+  if (mapControls.contains(focused)) focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}).observe(mapControls);
 get('open-backup').addEventListener('click', () => {
   pendingBackup = undefined;
   backupFile.value = '';
@@ -1616,6 +1708,7 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     deleteSelection();
   } else if (event.key === 'Escape') {
+    if (document.fullscreenElement) return;
     setConnectMode(false);
     if (connection) {
       connection = null;
