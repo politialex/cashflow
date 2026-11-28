@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useReducedMotion } from '@mantine/hooks';
 import { ActionIcon, Button, Paper, Popover, Tooltip, Text, Group, Stack } from '@mantine/core';
 import { formatMoney, moneyTone } from './format.js';
 export function UiButton({ children, variant = 'default', className = '', ...props }) {
@@ -22,7 +23,8 @@ export function FinanceCard({ name, kind = 'bank', value, privacy = false, selec
 }
 export function ContextEditor({ label = 'Modifica', children }) {
   const [opened,setOpened] = useState(false);
-  return <Popover opened={opened} onChange={setOpened} position="bottom-start" middlewares={{flip:true,shift:true}} trapFocus withinPortal withArrow transitionProps={{duration:180,transition:'pop'}}>
+  const reduced = useReducedMotion();
+  return <Popover opened={opened} onChange={setOpened} position="bottom-start" middlewares={{flip:true,shift:true}} trapFocus returnFocus withinPortal withArrow transitionProps={{duration:reduced?0:180,transition:'pop'}}>
     <Popover.Target><UiButton onClick={()=>setOpened(v=>!v)} aria-expanded={opened}>{label}</UiButton></Popover.Target>
     <Popover.Dropdown className="cf-overlay"><Stack gap="xs">{children}<UiButton onClick={()=>setOpened(false)}>Chiudi</UiButton></Stack></Popover.Dropdown>
   </Popover>;
