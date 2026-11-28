@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=canvas-backlog">
-  <script src="./public/app.js?v=canvas-backlog" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=account-accordion">
+  <script src="./public/app.js?v=account-accordion" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -30,7 +30,7 @@
           <button id="panel-add-node" class="icon-button" type="button" aria-label="Aggiungi nodo">+</button>
         </div>
         <p id="node-list-empty" class="empty-copy">Aggiungi conti, entrate e spese. Compariranno qui.</p>
-        <div id="node-list" class="node-list" role="list"></div>
+        <div id="node-list" class="node-list"></div>
         <div class="panel-tip"><strong>Connessioni rapide</strong><p>Trascina un punto sul bordo di un nodo fino al nodo di destinazione.</p></div>
       </aside>
 
@@ -40,6 +40,7 @@
             <svg id="board-edges" aria-label="Collegamenti" xmlns="http://www.w3.org/2000/svg"></svg>
             <div id="board-nodes" role="group" aria-label="Nodi"></div>
           </div>
+          <div id="board-selection-box" class="selection-box" aria-hidden="true" hidden></div>
           <div id="board-empty" class="board-empty"><span aria-hidden="true">＋</span><strong>Costruisci il tuo flusso</strong><p>Doppio click qui oppure usa il pulsante in basso.</p></div>
         </div>
         <p id="board-status" role="status" aria-live="polite"></p>

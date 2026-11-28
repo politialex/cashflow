@@ -14,6 +14,8 @@ La board occupa l’intera finestra. A sinistra trovi tutti gli elementi e a des
 
 Trascina lo sfondo per spostarti, usa la rotellina per lo zoom e il comando **Adatta** per inquadrare tutto. I nodi si agganciano automaticamente alla griglia. Un doppio click su un nodo o una freccia apre l’editor rapido. Il tasto Canc elimina la selezione, mentre Ctrl/Cmd+Z e Ctrl/Cmd+Y annullano e ripristinano le modifiche.
 
+Usa **Maiusc+clic** per aggiungere o togliere un nodo dalla selezione, oppure **Maiusc+trascina** sullo sfondo per disegnare un rettangolo. Da tastiera, sposta il focus sul nodo e usa **Maiusc+Invio** o **Maiusc+Spazio**. Trascina uno dei nodi selezionati o usa i tasti freccia sul nodo focalizzato per spostare tutto il gruppo. Ogni spostamento è una singola operazione di annullamento. **Esc** deseleziona. I dettagli e il comando Canc si riferiscono al nodo attivo del gruppo.
+
 Lo scenario di esempio separa lo stipendio tra un conto principale, un conto per le spese e un deposito con rendimento annuo del 2%.
 
 ### Regole della simulazione
