@@ -4,6 +4,7 @@ import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-st
 
 const cameraKey = 'cashflow-studio.camera.v1';
 const privacyKey = 'cashflow-studio.privacy.v1';
+const themeKey = 'cashflow-studio.theme.v1';
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
 const percent = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
 const types = {
@@ -12,6 +13,42 @@ const types = {
 };
 const accountTypes = new Set(['bank', 'deposit', 'investment', 'savings', 'cash']);
 const get = (id) => document.getElementById(id);
+const themeButton = get('toggle-theme');
+const themePicker = get('theme-picker');
+const themeOptions = { dark: 'Scuro', light: 'Chiaro', contrast: 'Alto contrasto' };
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  root.classList.add('theme-changing');
+  root.dataset.theme = theme;
+  const label = 'Tema: ' + themeOptions[theme];
+  themeButton.setAttribute('aria-label', label);
+  themeButton.title = label;
+  themePicker.querySelector('input[value="' + theme + '"]').checked = true;
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue('--chrome').trim();
+  requestAnimationFrame(() => root.classList.remove('theme-changing'));
+}
+
+let savedTheme;
+try {
+  savedTheme = localStorage.getItem(themeKey);
+} catch {
+  // Il cambio tema funziona anche se il browser blocca lo storage.
+}
+applyTheme(Object.hasOwn(themeOptions, savedTheme) ? savedTheme : 'dark');
+themePicker.addEventListener('toggle', (event) => {
+  if (event.newState === 'open') themePicker.querySelector('input:checked').focus();
+});
+themePicker.addEventListener('change', (event) => {
+  const theme = event.target.value;
+  applyTheme(theme);
+  try {
+    localStorage.setItem(themeKey, theme);
+  } catch {
+    // La scelta resta valida per la pagina corrente.
+  }
+});
+
 const viewport = get('board-viewport');
 const workspace = viewport.closest('.workspace');
 const canvas = get('board-canvas');

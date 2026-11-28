@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=scenario-tabs">
-  <script src="./public/app.js?v=scenario-tabs" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=scenarios-and-themes">
+  <script src="./public/app.js?v=scenarios-and-themes" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -20,6 +20,20 @@
       <button id="toggle-privacy" type="button" aria-pressed="false">Privacy</button>
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
       <button id="open-backup" type="button" aria-haspopup="dialog" aria-controls="backup">Backup</button>
+      <button id="toggle-theme" type="button" popovertarget="theme-picker" aria-label="Tema: Scuro" title="Tema: Scuro">
+        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+          <path d="M10 2.5a7.5 7.5 0 0 1 0 15Z" fill="currentColor"></path>
+        </svg>
+      </button>
+      <div id="theme-picker" popover>
+        <fieldset>
+          <legend>Tema</legend>
+          <label><input type="radio" name="theme" value="dark" checked> Scuro</label>
+          <label><input type="radio" name="theme" value="light"> Chiaro</label>
+          <label><input type="radio" name="theme" value="contrast"> Alto contrasto</label>
+        </fieldset>
+      </div>
     </div>
     <div class="scenario-bar" aria-label="Gestione scenari">
       <div id="scenario-tabs" role="tablist" aria-label="Scenari"></div>
