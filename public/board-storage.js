@@ -84,7 +84,7 @@ function localRecord(key) {
   return JSON.parse(localStorage.getItem(key) ?? 'null');
 }
 
-export async function openBoardStorage(validateBoard) {
+export async function openBoardStorage(validateBoard, createDemoBoard) {
   let database;
   try {
     database = await openDatabase();
@@ -158,7 +158,20 @@ export async function openBoardStorage(validateBoard) {
     }
   }
 
-  archive ??= readScenarioArchive({ nodes: [], transfers: [] }, validateBoard);
+  if (!archive) {
+    archive = readScenarioArchive({ nodes: [], transfers: [] }, validateBoard);
+    if (createDemoBoard && !readError) {
+      archive.scenarios.push({ id: 'scenario-demo', name: 'Demo', board: validateBoard(createDemoBoard()) });
+      try {
+        const savedAt = Date.now();
+        await storage.write({ ...archive, savedAt }, revision);
+        revision = savedAt;
+        archive = { ...archive, savedAt };
+      } catch {
+        readError = true;
+      }
+    }
+  }
   let queue = Promise.resolve();
 
   function scenario(id, current = archive) {

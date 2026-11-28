@@ -12,7 +12,7 @@ La board occupa l’intera finestra. A sinistra trovi tutti gli elementi e a des
 2. Collega due elementi trascinando uno dei quattro punti sul bordo del primo nodo fino al secondo. I trasferimenti tra conti possono avere un importo fisso o una percentuale delle entrate. Il motore ricava l’ordine dal grafo.
 3. Apri la simulazione, scegli un orizzonte da 1 a 120 mesi e usa il selettore per leggere il risultato di ogni mese. La board mostra entrate, uscite e disponibilità al termine del primo mese.
 
-Trascina lo sfondo per spostarti, usa la rotellina per lo zoom e il comando **Adatta** per inquadrare tutto. I nodi si agganciano automaticamente alla griglia. Un doppio click su un nodo o una freccia apre l’editor rapido. Il tasto Canc elimina la selezione, mentre Ctrl/Cmd+Z e Ctrl/Cmd+Y annullano e ripristinano le modifiche.
+Trascina lo sfondo per spostarti e usa la rotellina o i pulsanti **+** e **−** per lo zoom. Nei controlli in basso a destra, **Adatta** inquadra tutta la board e diventa **Centra** quando selezioni nodi o collegamenti. **Schermo intero** apre la modalità del browser, da cui puoi uscire con lo stesso pulsante o con Esc. I nodi si agganciano automaticamente alla griglia. Un doppio click su un nodo o una freccia apre l’editor rapido. Il tasto Canc elimina la selezione, mentre Ctrl/Cmd+Z e Ctrl/Cmd+Y annullano e ripristinano le modifiche.
 
 Nel pannello di una spesa, attiva **Spesa condivisa** e inserisci l’importo totale e il numero di partecipanti, te incluso. La board e la simulazione applicano solo la tua quota, arrotondata al centesimo più vicino. La spesa può restare autonoma o essere collegata da un solo conto, che addebita la stessa quota con la cadenza del nodo.
 
@@ -29,7 +29,13 @@ Lo scenario di esempio separa lo stipendio tra un conto principale, un conto per
 
 Cashflow Studio salva le modifiche alla board in IndexedDB, con ripiego su localStorage quando IndexedDB non è disponibile. Al primo avvio importa il salvataggio precedente dello stesso sito. L’inquadratura si conserva separatamente.
 
-Usa **Backup** nell’intestazione per scaricare un JSON della board o per scegliere un file e ripristinarlo. Il file resta sul dispositivo e contiene gli importi e i dati della board. Il ripristino sostituisce la board dopo la convalida del file e azzera la cronologia di annullamento della sessione. Un backup invalido lascia intatta la board. Puoi scaricare il backup dell’ultima board aperta anche se il browser blocca il salvataggio automatico.
+Usa **Download e backup** nella barra verticale per scaricare un JSON della board o per scegliere un file e ripristinarlo. Il file resta sul dispositivo e contiene gli importi e i dati della board. Il ripristino sostituisce la board dopo la convalida del file e azzera la cronologia di annullamento della sessione. Un backup invalido lascia intatta la board. Puoi scaricare il backup dell’ultima board aperta anche se il browser blocca il salvataggio automatico.
+
+## Tabella e valuta di visualizzazione
+
+**Vista tabella** apre saldi e movimenti. La tabella segue la data e l’ordine dei collegamenti usati dal motore. La modalità **Privacy** oscura gli importi anche qui.
+
+Il selettore della valuta mostra stime in USD o GBP con un tasso fisso scelto per lo scenario. Gli editor, i calcoli e i backup in JSON usano EUR. Con Privacy attiva, il dialog di backup segnala che il file scaricato contiene dati in chiaro.
 
 ## Avvio locale e verifiche
 

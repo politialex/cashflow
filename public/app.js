@@ -1,11 +1,14 @@
-import { accountTypes, sharedExpenseShareCents, simulateBoard } from './board-model.js?v=shared-expenses';
+import { accountTypes, flowOrder, sharedExpenseShareCents, simulateBoard } from './board-model.js?v=shared-expenses';
 import { currentMonth } from './flow-calendar.js';
 import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-storage.js';
 
 const cameraKey = 'cashflow-studio.camera.v1';
 const privacyKey = 'cashflow-studio.privacy.v1';
 const themeKey = 'cashflow-studio.theme.v1';
-const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+const currencyCodes = new Set(['EUR', 'USD', 'GBP']);
+let displayCurrency = 'EUR';
+let displayRate = 1;
+let displayFormatter = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
 const percent = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
 const types = {
   bank: 'Conto bancario', deposit: 'Conto deposito', investment: 'Investimento',
@@ -50,6 +53,9 @@ themePicker.addEventListener('change', (event) => {
 
 const viewport = get('board-viewport');
 const workspace = viewport.closest('.workspace');
+const fitButton = get('fit-view');
+const fullscreenButton = get('toggle-fullscreen');
+const mapControls = fitButton.parentElement;
 const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
@@ -82,6 +88,7 @@ let quickTarget = null;
 let history = [];
 let future = [];
 let desktopNodesOpen = true;
+let fullscreenChanging = false;
 let saveRevision = 0;
 let backupRead = 0;
 let pendingBackup;
@@ -112,6 +119,10 @@ const privacyButton = get('toggle-privacy');
 
 function applyPrivacyMode() {
   privacyButton.setAttribute('aria-pressed', String(privacyMode));
+  document.documentElement.classList.toggle('privacy-active', privacyMode);
+  get('backup-privacy-warning').hidden = !privacyMode;
+  if (privacyMode) get('export-backup').setAttribute('aria-describedby', 'backup-privacy-warning');
+  else get('export-backup').removeAttribute('aria-describedby');
   document.querySelectorAll('[data-private-amount]').forEach((element) => {
     element.textContent = privacyMode ? '••••' : displayedAmounts.get(element);
   });
@@ -139,7 +150,7 @@ privacyButton.addEventListener('click', () => {
   }
 });
 
-const money = (cents) => euro.format(cents / 100);
+const money = (cents) => (displayCurrency === 'EUR' ? '' : '≈ ') + displayFormatter.format(cents * displayRate / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
 const decimalInput = (number) => String(number).replace('.', ',');
 const providerName = (node) => typeof node.provider === 'string' ? node.provider.trim() : '';
@@ -199,8 +210,9 @@ function validateSavedBoard(value) {
   return { ...value, nodes: value.nodes.map((node) => ({ ...node, ...boundPosition(node.type, node.x, node.y) })) };
 }
 
-const boardStorage = await openBoardStorage(validateSavedBoard);
+const boardStorage = await openBoardStorage(validateSavedBoard, makeDemoBoard);
 if (boardStorage.board) board = boardStorage.board;
+loadDisplayCurrency();
 get('storage-state').textContent = boardStorage.readError ? 'Verifica il backup' : 'Salvato nel browser';
 if (boardStorage.readError) {
   writeStatus('Non tutti i dati locali sono stati letti. Puoi ripristinare da un file di backup.');
@@ -333,31 +345,110 @@ function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + vie
   applyCamera();
 }
 
-function centerBoard() {
-  camera = { x: (viewport.clientWidth - world.width) / 2, y: (viewport.clientHeight - world.height) / 2, zoom: 1 };
+function centerBoard(centerX = viewport.clientWidth / 2, centerY = viewport.clientHeight / 2) {
+  camera = { x: centerX - world.width / 2, y: centerY - world.height / 2, zoom: 1 };
 }
 
-function fitView() {
-  if (!board.nodes.length) {
-    centerBoard();
-    applyCamera();
-    return;
+function visibleFitAreas() {
+  const frame = viewport.getBoundingClientRect();
+  const overlays = [nodesPanel, mapControls,
+    viewport.parentElement.querySelector('.board-tools'), document.querySelector('.site-header')];
+  let areas = [{ left: 0, top: 0, right: frame.width, bottom: frame.height }];
+  for (const overlay of overlays) {
+    if (!overlay) continue;
+    const rect = overlay.getBoundingClientRect();
+    const blocked = {
+      left: rect.left - frame.left - 8, right: rect.right - frame.left + 8,
+      top: rect.top - frame.top - 8, bottom: rect.bottom - frame.top + 8,
+    };
+    if (!rect.width || !rect.height) continue;
+    areas = areas.flatMap((area) => {
+      if (blocked.right <= area.left || blocked.left >= area.right
+        || blocked.bottom <= area.top || blocked.top >= area.bottom) return [area];
+      return [
+        { ...area, right: blocked.left },
+        { ...area, left: blocked.right },
+        { ...area, bottom: blocked.top },
+        { ...area, top: blocked.bottom },
+      ].filter((part) => part.left < part.right && part.top < part.bottom);
+    });
   }
-  const bounds = board.nodes.reduce((area, node) => {
+  return areas;
+}
+
+function fitView(nodes = board.nodes) {
+  // Keyboard focus can scroll an overflow-hidden viewport before the camera is fitted.
+  viewport.scrollTo(0, 0);
+  const bounds = nodes.reduce((area, node) => {
     const size = nodeSize(node);
     return {
       left: Math.min(area.left, node.x), top: Math.min(area.top, node.y),
       right: Math.max(area.right, node.x + size.width), bottom: Math.max(area.bottom, node.y + size.height),
     };
   }, { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
-  const padding = Math.min(90, viewport.clientWidth / 8, viewport.clientHeight / 8);
-  const zoom = Math.max(minZoom, Math.min(1.2,
-    (viewport.clientWidth - padding * 2) / (bounds.right - bounds.left),
-    (viewport.clientHeight - padding * 2) / (bounds.bottom - bounds.top)));
+  const width = nodes.length ? bounds.right - bounds.left : world.width;
+  const height = nodes.length ? bounds.bottom - bounds.top : world.height;
+  const frame = { left: 0, top: 0, right: viewport.clientWidth, bottom: viewport.clientHeight };
+  function scale(area) {
+    const availableWidth = area.right - area.left;
+    const availableHeight = area.bottom - area.top;
+    const padding = Math.min(90, availableWidth / 8, availableHeight / 8);
+    return Math.min((availableWidth - padding * 2) / width, (availableHeight - padding * 2) / height);
+  }
+  const areas = visibleFitAreas();
+  const area = areas.reduce((best, current) => scale(current) > scale(best) ? current : best, areas[0] ?? frame);
+  const centerX = (area.left + area.right) / 2;
+  const centerY = (area.top + area.bottom) / 2;
+  if (!nodes.length) {
+    centerBoard(centerX, centerY);
+    applyCamera();
+    return;
+  }
+  const zoom = Math.max(minZoom, Math.min(1.2, scale(area)));
   camera.zoom = zoom;
-  camera.x = (viewport.clientWidth - (bounds.right - bounds.left) * zoom) / 2 - bounds.left * zoom;
-  camera.y = (viewport.clientHeight - (bounds.bottom - bounds.top) * zoom) / 2 - bounds.top * zoom;
+  camera.x = centerX - (bounds.left + width / 2) * zoom;
+  camera.y = centerY - (bounds.top + height / 2) * zoom;
   applyCamera();
+}
+
+function fitSelection() {
+  if (mobilePanels.matches && !nodesPanel.hidden) updatePanels();
+  const transfer = selected?.kind === 'transfer' && board.transfers.find(({ id }) => id === selected.id);
+  const nodes = board.nodes.filter(({ id }) => transfer ? id === transfer.from || id === transfer.to : isNodeSelected(id));
+  fitView(nodes.length ? nodes : board.nodes);
+}
+
+function updateFitControl() {
+  const centered = Boolean(selected);
+  fitButton.textContent = centered ? 'Centra' : 'Adatta';
+  fitButton.setAttribute('aria-label', centered ? 'Centra la selezione' : 'Adatta la vista a tutti i nodi');
+}
+
+function updateFullscreenControl() {
+  const enabled = document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === 'function';
+  const fullscreen = document.fullscreenElement === document.documentElement;
+  fullscreenButton.setAttribute('aria-pressed', String(fullscreen));
+  fullscreenButton.setAttribute('aria-disabled', String(!enabled));
+  fullscreenButton.title = !enabled ? 'Schermo intero non disponibile'
+    : fullscreen ? 'Esci dallo schermo intero' : 'Attiva schermo intero';
+}
+
+async function toggleFullscreen() {
+  if (fullscreenChanging) return;
+  if (fullscreenButton.getAttribute('aria-disabled') === 'true') {
+    writeStatus('Schermo intero non disponibile in questo browser o contesto.');
+    return;
+  }
+  fullscreenChanging = true;
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch {
+    writeStatus('Impossibile cambiare modalità schermo intero.');
+  } finally {
+    fullscreenChanging = false;
+    updateFullscreenControl();
+  }
 }
 
 function makeNode(type, x, y) {
@@ -518,6 +609,7 @@ function setCardSelection(card, name) {
 
 function updateSelection(selection) {
   selected = selection;
+  updateFitControl();
   for (const card of nodesLayer.children) {
     setCardSelection(card, card.querySelector('.node-title').textContent);
   }
@@ -579,7 +671,8 @@ function startNodeDrag(event, node, card) {
   event.stopPropagation();
   drag = {
     kind: 'node', id: node.id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
-    selection: selectionForMove(node), toggle: event.shiftKey, nodes: board.nodes,
+    selection: selectionForMove(node), toggle: event.shiftKey && !viewport.classList.contains('connect-mode'),
+    linking: viewport.classList.contains('connect-mode'), nodes: board.nodes,
   };
   card.setPointerCapture(event.pointerId);
 }
@@ -588,6 +681,14 @@ function moveNodeDrag(event, node) {
   if (drag?.kind !== 'node' || drag.id !== node.id || drag.pointerId !== event.pointerId || drag.toggle) return;
   const dx = (event.clientX - drag.startX) / camera.zoom;
   const dy = (event.clientY - drag.startY) / camera.zoom;
+  if (drag.linking) {
+    if (Math.hypot(dx, dy) * camera.zoom < 6) return;
+    const side = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'bottom' : 'top');
+    drag = null;
+    startConnection(event, node, side);
+    previewConnection(event.clientX, event.clientY);
+    return;
+  }
   if (!drag.firstMonth && Math.hypot(dx, dy) < 3) return;
   drag.firstMonth ??= simulateBoard(board, 1, projectionStart)[0];
   drag.nodes = moveNodes(drag.selection, dx, dy);
@@ -812,6 +913,8 @@ function drawProjection(periods, selection) {
         interest: sum.interest + current.interest, balance: current.balance };
     }, node);
   });
+  const ranks = flowOrder(board);
+  totals.sort((left, right) => ranks.get(left.id) - ranks.get(right.id));
   get('projection-rows').replaceChildren(...totals.map((result) => {
     const row = document.createElement('tr');
     const name = document.createElement('th');
@@ -827,19 +930,31 @@ function drawProjection(periods, selection) {
   }));
   get('simulation-status').textContent = year ? 'Anno ' + year + ' · ' + selectedPeriods.length + ' mesi simulati'
     : 'Mese ' + first.month + ' di ' + periods.length;
-  get('projection-events').replaceChildren(...selectedPeriods.flatMap(({ date, timeline }) => timeline.map((event) => {
-    const item = document.createElement('li');
-    const description = event.kind === 'transfer' ? nodeName(event.from) + ' → ' + nodeName(event.to) : nodeName(event.id);
-    item.append(document.createTextNode(date + '-' + String(event.day).padStart(2, '0') + ' · ' + description + ' · '));
-    const values = event.kind === 'transfer' ? [event.amount]
-      : [event.inflow, -event.outflow].filter(Boolean);
-    item.append(createAmount('projection-event-amount', values.length ? values.map(money).join(' / ') : money(0)));
-    return item;
-  })));
-  get('projection-event-details').hidden = !get('projection-events').childElementCount;
+  const nodeRules = new Map(board.nodes.map((node) => [node.id, node]));
+  const transferRules = new Map(board.transfers.map((transfer) => [transfer.id, transfer]));
+  const rows = selectedPeriods.flatMap(({ date, timeline }) => timeline.flatMap((event) => {
+    const isTransfer = event.kind === 'transfer';
+    const rule = (isTransfer ? transferRules : nodeRules).get(event.id);
+    const schedule = rule?.schedule;
+    const frequency = schedule?.annualDistribution === 'installments' ? '12 quote annue'
+      : schedule?.frequency === 'interval' ? 'Ogni ' + schedule.intervalMonths + ' mesi'
+      : { monthly: 'Mensile', annual: 'Annuale', once: 'Una tantum' }[schedule?.frequency ?? rule?.frequency ?? 'monthly'];
+    const day = date + '-' + String(event.day).padStart(2, '0');
+    const movements = isTransfer ? [[nodeName(event.from), nodeName(event.to), event.amount]]
+      : [['Esterno', nodeName(event.id), event.inflow], [nodeName(event.id), 'Esterno', event.outflow]].filter((item) => item[2]);
+    return movements.map(([from, to, amount]) => {
+      const row = document.createElement('tr');
+      for (const value of [day, from, to, frequency]) row.insertCell().textContent = value;
+      writeAmount(row.insertCell(), money(amount));
+      return row;
+    });
+  }));
+  get('projection-movement-rows').replaceChildren(...rows);
+  get('projection-event-details').hidden = !rows.length;
 }
 
 function render() {
+  updateFitControl();
   const periods = simulateBoard(board, horizon, projectionStart);
   renderBoard(periods[0]);
   renderNodeList(periods[0]);
@@ -1131,6 +1246,17 @@ function deleteSelection(target = selected) {
   return commit({ ...board, transfers: board.transfers.filter(({ id }) => id !== target.id) }, null, 'Collegamento eliminato.');
 }
 
+function canConnect(from, to) {
+  return from !== to && !board.transfers.some((transfer) => transfer.from === from && transfer.to === to);
+}
+
+function previewConnection(x, y) {
+  const target = document.elementFromPoint(x, y)?.closest('.board-node');
+  const accepted = target && canConnect(connection.from, target.dataset.id) ? target : null;
+  for (const card of nodesLayer.children) card.classList.toggle('is-connect-target', card === accepted);
+  drawEdges(simulateBoard(board, 1, projectionStart)[0], screenToWorld(x, y));
+}
+
 function finishConnection(clientX, clientY) {
   if (!connection) return;
   const origin = board.nodes.find(({ id }) => id === connection.from);
@@ -1138,7 +1264,9 @@ function finishConnection(clientX, clientY) {
   const targetElement = hit?.closest('.board-node');
   const target = targetElement && board.nodes.find(({ id }) => id === targetElement.dataset.id);
   connection = null;
-  if (!target || target.id === origin.id) {
+  setConnectMode(false);
+  for (const card of nodesLayer.children) card.classList.remove('is-connect-target');
+  if (!target || !canConnect(origin.id, target.id)) {
     drawEdges(simulateBoard(board, 1, projectionStart)[0]);
     if (!target && hit?.closest('#board-viewport') && !hit.closest('.edge-group')) {
       nodesLayer.querySelector('[data-id="' + CSS.escape(origin.id) + '"]').focus({ preventScroll: true });
@@ -1191,7 +1319,7 @@ viewport.addEventListener('pointermove', (event) => {
     return;
   }
   if (connection) {
-    drawEdges(simulateBoard(board, 1, projectionStart)[0], screenToWorld(event.clientX, event.clientY));
+    previewConnection(event.clientX, event.clientY);
     return;
   }
   if (drag?.kind !== 'canvas') return;
@@ -1268,7 +1396,14 @@ updatePanels();
 
 get('zoom-in').addEventListener('click', () => setZoom(camera.zoom + .15));
 get('zoom-out').addEventListener('click', () => setZoom(camera.zoom - .15));
-get('fit-view').addEventListener('click', fitView);
+fitButton.addEventListener('click', fitSelection);
+fullscreenButton.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', updateFullscreenControl);
+updateFullscreenControl();
+new ResizeObserver(() => {
+  const focused = document.activeElement;
+  if (mapControls.contains(focused)) focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}).observe(mapControls);
 get('open-backup').addEventListener('click', () => {
   pendingBackup = undefined;
   backupFile.value = '';
@@ -1376,7 +1511,7 @@ function setConnectMode(active) {
 get('add-transfer').addEventListener('click', () => {
   const active = !viewport.classList.contains('connect-mode');
   setConnectMode(active);
-  writeStatus(active ? 'Seleziona il nodo di partenza, poi quello di destinazione.' : 'Modalità collegamento chiusa.');
+  writeStatus(active ? 'Trascina un nodo sulla destinazione oppure seleziona i due nodi in sequenza.' : 'Modalità collegamento chiusa.');
 });
 
 function chooseConnectionNode(node) {
@@ -1385,7 +1520,10 @@ function chooseConnectionNode(node) {
     writeStatus('Seleziona il nodo di destinazione oppure usa Aggiungi.');
     return;
   }
-  if (connectFrom.id === node.id) return;
+  if (!canConnect(connectFrom.id, node.id)) {
+    writeStatus('Scegli una destinazione diversa e non ancora collegata.');
+    return;
+  }
   const transfer = makeTransfer(connectFrom, node);
   setConnectMode(false);
   if (commit({ ...board, transfers: [...board.transfers, transfer] }, { kind: 'transfer', id: transfer.id }, 'Collegamento creato.')) {
@@ -1443,27 +1581,163 @@ document.addEventListener('pointerdown', dismissOutside, true);
 document.addEventListener('click', dismissOutside, true);
 
 const scenarioTabs = get('scenario-tabs');
+const scenarioStrip = scenarioTabs.parentElement;
+const scenarioOptions = get('scenario-options');
+const scenarioActions = get('scenario-actions');
 const scenarioEditor = get('scenario-editor');
+const scenarioRenameForm = get('scenario-inline-form');
+const scenarioRenameName = get('scenario-inline-name');
+let renamingScenario = null;
+let pendingActivation;
+
+function positionScenarioActions() {
+  if (!scenarioActions.matches(':popover-open')) return;
+  const anchor = scenarioOptions.getBoundingClientRect();
+  const strip = scenarioStrip.getBoundingClientRect();
+  if (anchor.right <= strip.left || anchor.left >= strip.right) {
+    scenarioActions.hidePopover();
+    return;
+  }
+  placePopover(scenarioActions, anchor);
+}
+
+function positionScenarioControls() {
+  const tab = scenarioTabs.querySelector('[aria-selected="true"]');
+  const left = tab.offsetLeft;
+  const width = tab.offsetWidth;
+  const gap = 3;
+  scenarioOptions.style.left = (left + width - scenarioOptions.offsetWidth - gap) + 'px';
+  scenarioRenameForm.style.left = left + 'px';
+  scenarioRenameForm.style.width = width + 'px';
+  positionScenarioActions();
+}
+
+function displayCurrencyKey() {
+  return 'cashflow-studio.display-currency.' + boardStorage.archive.activeId;
+}
+
+function setDisplayCurrency(code, rate) {
+  displayCurrency = code;
+  displayRate = rate;
+  displayFormatter = new Intl.NumberFormat('it-IT', { style: 'currency', currency: code });
+  const button = get('open-currency');
+  if (button) {
+    button.querySelector('[data-currency-code]')?.replaceChildren(code);
+    button.setAttribute('aria-label', 'Valuta di visualizzazione: ' + code);
+  }
+}
+
+function loadDisplayCurrency() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(displayCurrencyKey()) ?? 'null');
+    if (saved && currencyCodes.has(saved.code) && Number.isFinite(saved.rate) && saved.rate > 0 && saved.rate <= 100000) {
+      setDisplayCurrency(saved.code, saved.code === 'EUR' ? 1 : saved.rate);
+      return;
+    }
+  } catch {
+    // Una preferenza non disponibile non cambia l’unità contabile.
+  }
+  setDisplayCurrency('EUR', 1);
+}
+
+const currencyDialog = get('currency-view');
+const currencySelect = get('display-currency');
+const rateInput = get('currency-rate');
+function showRateField() {
+  const code = currencySelect.value;
+  get('currency-rate-field').hidden = code === 'EUR';
+  get('currency-rate-label').textContent = '1 EUR = … ' + code;
+  get('currency-error').textContent = '';
+}
+get('open-currency')?.addEventListener('click', () => {
+  currencySelect.value = displayCurrency;
+  rateInput.value = displayCurrency === 'EUR' ? '' : decimalInput(displayRate);
+  showRateField();
+  currencyDialog.showModal();
+});
+currencySelect.addEventListener('change', () => {
+  rateInput.value = currencySelect.value === displayCurrency && displayCurrency !== 'EUR' ? decimalInput(displayRate) : '';
+  showRateField();
+});
+get('close-currency').addEventListener('click', () => currencyDialog.close());
+get('currency-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const code = currencySelect.value;
+  try {
+    if (!currencyCodes.has(code)) throw new RangeError('Scegli una valuta supportata.');
+    if (privacyMode && code !== 'EUR') throw new Error('Mostra gli importi per inserire e verificare il tasso.');
+    const rate = code === 'EUR' ? 1 : parseDecimal(rateInput.value, 'Tasso', .000001, 100000, 6);
+    try {
+      localStorage.setItem(displayCurrencyKey(), JSON.stringify({ code, rate }));
+    } catch {
+      // La scelta vale per la sessione corrente.
+    }
+    setDisplayCurrency(code, rate);
+    render();
+    currencyDialog.close();
+  } catch (error) {
+    get('currency-error').textContent = error.message;
+  }
+});
 
 function renderScenarioTabs(focus = false) {
   const { scenarios, activeId } = boardStorage.archive;
-  scenarioTabs.replaceChildren(...scenarios.map(({ id, name }) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.id = 'scenario-tab-' + id;
-    button.dataset.scenarioId = id;
-    button.setAttribute('role', 'tab');
-    button.setAttribute('aria-controls', 'scenario-panel');
+  const existingTabs = new Map([...scenarioTabs.children].map((tab) => [tab.dataset.scenarioId, tab]));
+  for (const { id, name } of scenarios) {
+    let button = existingTabs.get(id);
+    existingTabs.delete(id);
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.id = 'scenario-tab-' + id;
+      button.dataset.scenarioId = id;
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-controls', 'scenario-panel');
+      scenarioTabs.append(button);
+    }
     button.setAttribute('aria-selected', String(id === activeId));
     button.tabIndex = id === activeId ? 0 : -1;
-    button.textContent = name;
-    return button;
-  }));
+    if (button.textContent !== name) button.textContent = name;
+  }
+  for (const obsoleteTab of existingTabs.values()) obsoleteTab.remove();
   const active = get('scenario-tab-' + activeId);
+  scenarioOptions.hidden = false;
+  const optionsLabel = 'Azioni per ' + active.textContent;
+  scenarioOptions.setAttribute('aria-label', optionsLabel);
+  scenarioOptions.title = optionsLabel;
   get('scenario-panel').setAttribute('aria-labelledby', active.id);
   get('scenario-delete').disabled = scenarios.length <= 1;
+  positionScenarioControls();
   if (focus) active.focus({ preventScroll: true });
   active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function endScenarioRename(restoreFocus = false) {
+  if (!renamingScenario) return;
+  const { tab, trigger } = renamingScenario;
+  renamingScenario = null;
+  scenarioRenameForm.hidden = true;
+  scenarioOptions.hidden = false;
+  tab.classList.remove('is-renaming');
+  tab.tabIndex = 0;
+  positionScenarioControls();
+  if (restoreFocus) trigger.focus({ preventScroll: true });
+}
+
+function startScenarioRename(tab, trigger = tab) {
+  if (scenarioChanging || renamingScenario) return;
+  scenarioActions.hidePopover();
+  renamingScenario = { tab, trigger };
+  tab.classList.add('is-renaming');
+  tab.tabIndex = -1;
+  scenarioOptions.hidden = true;
+  scenarioRenameName.setCustomValidity('');
+  scenarioRenameName.value = tab.textContent;
+  scenarioRenameForm.hidden = false;
+  positionScenarioControls();
+  tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  scenarioRenameName.focus({ preventScroll: true });
+  scenarioRenameName.select();
 }
 
 async function changeScenario(operation, replaceBoard = true) {
@@ -1472,8 +1746,10 @@ async function changeScenario(operation, replaceBoard = true) {
   scenarioTabs.setAttribute('aria-busy', 'true');
   try {
     await operation();
+    endScenarioRename();
     if (replaceBoard) {
       board = boardStorage.board;
+      loadDisplayCurrency();
       history = [];
       future = [];
       selected = null;
@@ -1499,12 +1775,24 @@ async function changeScenario(operation, replaceBoard = true) {
 }
 
 function activateScenario(id) {
-  if (id !== boardStorage.archive.activeId) void changeScenario(() => boardStorage.activateScenario(id));
+  if (id === boardStorage.archive.activeId) return Promise.resolve(true);
+  if (pendingActivation?.id === id) return pendingActivation.result;
+  if (scenarioChanging) return Promise.resolve(false);
+  endScenarioRename();
+  scenarioActions.hidePopover();
+  const result = changeScenario(() => boardStorage.activateScenario(id));
+  pendingActivation = { id, result };
+  void result.then(() => { pendingActivation = null; });
+  return result;
 }
 
 scenarioTabs.addEventListener('click', (event) => {
   const tab = event.target.closest('[data-scenario-id]');
-  if (tab) activateScenario(tab.dataset.scenarioId);
+  if (tab) void activateScenario(tab.dataset.scenarioId);
+});
+scenarioTabs.addEventListener('dblclick', async (event) => {
+  const tab = event.target.closest('[data-scenario-id]');
+  if (tab && await activateScenario(tab.dataset.scenarioId)) startScenarioRename(tab);
 });
 
 scenarioTabs.addEventListener('keydown', (event) => {
@@ -1515,20 +1803,26 @@ scenarioTabs.addEventListener('keydown', (event) => {
   const index = tabs.indexOf(tab);
   const targetIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
     : (index + (event.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
-  activateScenario(tabs[targetIndex].dataset.scenarioId);
+  void activateScenario(tabs[targetIndex].dataset.scenarioId);
 });
+
+scenarioActions.addEventListener('toggle', positionScenarioActions);
+scenarioStrip.addEventListener('scroll', positionScenarioActions);
+window.addEventListener('resize', positionScenarioControls);
 
 function openScenarioEditor(action) {
   const { activeId, scenarios } = boardStorage.archive;
   const active = scenarios.find(({ id }) => id === activeId);
   scenarioAction = action;
-  get('scenario-actions').hidePopover();
-  get('scenario-editor-title').textContent = { create: 'Nuovo scenario', rename: 'Rinomina scenario', copy: 'Duplica scenario' }[action];
+  endScenarioRename();
+  scenarioActions.hidePopover();
+  get('scenario-editor-title').textContent = action === 'copy' ? 'Duplica scenario' : 'Nuovo scenario';
   get('scenario-error').textContent = '';
   get('scenario-links-field').hidden = action !== 'copy';
+  get('scenario-demo-create').hidden = action !== 'create';
   get('scenario-keep-links').checked = true;
   const name = get('scenario-name');
-  name.value = action === 'create' ? '' : action === 'copy' ? (active.name + ' (copia)').slice(0, 60) : active.name;
+  name.value = action === 'copy' ? (active.name + ' (copia)').slice(0, 60) : '';
   scenarioEditor.showModal();
   name.focus();
   name.select();
@@ -1546,9 +1840,29 @@ function duplicateBoard(keepLinks) {
 }
 
 get('scenario-create').addEventListener('click', () => openScenarioEditor('create'));
-get('scenario-rename').addEventListener('click', () => openScenarioEditor('rename'));
+get('scenario-rename').addEventListener('click', () => startScenarioRename(scenarioTabs.querySelector('[aria-selected="true"]'), scenarioOptions));
 get('scenario-copy').addEventListener('click', () => openScenarioEditor('copy'));
 get('scenario-cancel').addEventListener('click', () => scenarioEditor.close());
+get('scenario-inline-cancel').addEventListener('click', () => endScenarioRename(true));
+scenarioRenameName.addEventListener('input', () => scenarioRenameName.setCustomValidity(''));
+scenarioRenameForm.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || scenarioChanging) return;
+  event.preventDefault();
+  event.stopPropagation();
+  endScenarioRename(true);
+});
+scenarioRenameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = scenarioRenameName.value.trim();
+  if (!name) {
+    scenarioRenameName.setCustomValidity('Inserisci il nome dello scenario.');
+    scenarioRenameName.reportValidity();
+    return;
+  }
+  const id = renamingScenario.tab.dataset.scenarioId;
+  const renamed = await changeScenario(() => boardStorage.renameScenario(id, name), false);
+  if (!renamed) scenarioRenameName.focus({ preventScroll: true });
+});
 scenarioEditor.addEventListener('cancel', (event) => {
   if (scenarioChanging) event.preventDefault();
 });
@@ -1561,17 +1875,14 @@ get('scenario-form').addEventListener('submit', async (event) => {
   }
   const save = get('scenario-save');
   save.disabled = true;
-  if (scenarioAction === 'rename') {
-    await changeScenario(() => boardStorage.renameScenario(boardStorage.archive.activeId, name), false);
-  } else {
-    const initial = scenarioAction === 'copy' ? duplicateBoard(get('scenario-keep-links').checked) : undefined;
-    await changeScenario(() => boardStorage.createScenario(name, initial));
-  }
+  const initial = scenarioAction === 'copy' ? duplicateBoard(get('scenario-keep-links').checked) : undefined;
+  await changeScenario(() => boardStorage.createScenario(name, initial));
   save.disabled = false;
 });
 
 get('scenario-delete').addEventListener('click', () => {
-  get('scenario-actions').hidePopover();
+  scenarioActions.hidePopover();
+  scenarioOptions.focus({ preventScroll: true });
   const { activeId, scenarios } = boardStorage.archive;
   const active = scenarios.find(({ id }) => id === activeId);
   if (confirm('Eliminare lo scenario «' + active.name + '»?')) {
@@ -1579,12 +1890,11 @@ get('scenario-delete').addEventListener('click', () => {
   }
 });
 
-get('load-example').addEventListener('click', () => {
-  const demo = boardStorage.archive.scenarios.find(({ name }) => name === 'Scenario demo');
-  if (demo) {
-    activateScenario(demo.id);
-    return;
-  }
+get('scenario-demo-create').addEventListener('click', () => {
+  void changeScenario(() => boardStorage.createScenario('Demo', makeDemoBoard()));
+});
+
+function makeDemoBoard() {
   const salary = applySignedFlow(makeNode('source', 160, 520), 240_000);
   salary.name = 'Stipendio';
   const bank = makeNode('bank', 520, 480);
@@ -1601,10 +1911,16 @@ get('load-example').addEventListener('click', () => {
     { ...makeTransfer(bank, deposit), amountCents: 60_000 },
     { ...makeTransfer(bank, investment), amountCents: 30_000 },
   ];
-  void changeScenario(() => boardStorage.createScenario('Scenario demo', { nodes: [salary, bank, bills, deposit, investment], transfers }));
-});
+  return { nodes: [salary, bank, bills, deposit, investment], transfers };
+}
 
 get('open-simulation').addEventListener('click', () => simulation.showModal());
+get('open-table')?.addEventListener('click', () => {
+  get('projection-month').value = '1';
+  drawProjection(simulateBoard(board, horizon, projectionStart), '1');
+  get('projection-event-details').open = true;
+  simulation.showModal();
+});
 get('close-simulation').addEventListener('click', () => simulation.close());
 get('simulation-form').addEventListener('submit', (event) => {
   event.preventDefault();
@@ -1623,7 +1939,7 @@ get('simulation-form').addEventListener('submit', (event) => {
 get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon, projectionStart), get('projection-month').value));
 
 document.addEventListener('keydown', (event) => {
-  if (backupDialog.open || scenarioEditor.open || event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
+  if (backupDialog.open || scenarioEditor.open || currencyDialog.open || event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
   if (drag?.kind === 'node' && event.key !== 'Escape') return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();
@@ -1635,7 +1951,12 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     deleteSelection();
   } else if (event.key === 'Escape') {
+    if (document.fullscreenElement) return;
     setConnectMode(false);
+    if (connection) {
+      connection = null;
+      render();
+    }
     if (drag?.kind === 'node') {
       const { id: draggedId } = drag;
       drag = null;
