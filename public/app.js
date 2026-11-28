@@ -52,12 +52,12 @@ themePicker.addEventListener('change', (event) => {
 });
 
 const viewport = get('board-viewport');
-const workspace = viewport.closest('.workspace');
 const fitButton = get('fit-view');
 const fullscreenButton = get('toggle-fullscreen');
 const mapControls = fitButton.parentElement;
 const header = document.querySelector('.site-header');
 const boardTools = document.querySelector('.board-tools');
+const boardStatus = get('board-status');
 const syncHeaderBottom = () => {
   document.body.style.setProperty('--header-bottom', header.getBoundingClientRect().bottom + 'px');
 };
