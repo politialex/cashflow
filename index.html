@@ -94,12 +94,24 @@
           <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
         </select></div>
         <div class="quick-account-field field"><label for="quick-opening">Saldo iniziale (€)</label><input id="quick-opening" data-private-input name="opening" inputmode="decimal"></div>
-        <div class="field"><label for="quick-flow">Flusso mensile (€)</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
+        <div class="field"><label for="quick-flow">Importo del flusso (€)</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
+        <div class="field"><label for="quick-schedule">Cadenza del flusso</label><select id="quick-schedule" name="schedule">
+          <option value="">Mensile, dal mese iniziale</option><option value="monthly">Mensile con data</option>
+          <option value="annual">Annuale, importo intero</option><option value="installments">Annuale, in 12 quote</option>
+          <option value="once">Una tantum</option><option value="interval">Ogni N mesi</option>
+        </select></div>
+        <div id="quick-schedule-fields" class="field" hidden><label for="quick-schedule-start">Data di partenza</label>
+          <input id="quick-schedule-start" name="scheduleStart" type="date">
+          <div id="quick-schedule-interval-field" class="field" hidden><label for="quick-schedule-interval">Ogni quanti mesi</label>
+            <input id="quick-schedule-interval" name="scheduleInterval" type="number" min="1" step="1">
+          </div>
+        </div>
         <div class="quick-account-field field"><label for="quick-rate">Rendimento annuo (%)</label><input id="quick-rate" data-private-input name="annualRate" inputmode="decimal"></div>
         <details class="summary"><summary>Riepilogo del mese 1</summary><div id="quick-node-summary" class="form-summary"></div></details>
       </div>
       <div id="quick-transfer-fields" hidden>
         <p id="quick-transfer-route" class="connection-summary"></p>
+        <p id="quick-linked-flow" class="field-help" hidden>Importo e cadenza seguono il nodo collegato. Modificali nel nodo.</p>
         <div class="field"><label for="quick-transfer-mode">Movimento</label><select id="quick-transfer-mode" name="mode"><option value="fixed">Importo fisso</option><option value="percent">Percentuale delle entrate</option></select></div>
         <div class="field"><label for="quick-transfer-value">Valore</label><input id="quick-transfer-value" data-private-input name="value" inputmode="decimal"></div>
         <div class="field"><label for="quick-transfer-frequency">Frequenza</label><select id="quick-transfer-frequency" name="frequency"><option value="monthly">Ogni mese</option><option value="annual">Ogni anno</option><option value="once">Una volta</option></select></div>
@@ -145,9 +157,10 @@
 
   <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">
     <div class="dialog-heading"><div><span class="eyebrow">Proiezione</span><h2 id="simulation-heading">Simulazione</h2></div><button id="close-simulation" type="button" aria-label="Chiudi">×</button></div>
-    <form id="simulation-form" class="simulation-form"><div class="field"><label for="projection-length">Orizzonte in mesi</label><input id="projection-length" name="months" type="number" min="1" max="120" value="12" required></div><button class="primary-button" type="submit">Calcola</button></form>
+    <form id="simulation-form" class="simulation-form"><div class="field"><label for="projection-start">Mese iniziale</label><input id="projection-start" name="startMonth" type="month" required></div><div class="field"><label for="projection-length">Orizzonte in mesi</label><input id="projection-length" name="months" type="number" min="1" max="120" value="12" required></div><button class="primary-button" type="submit">Calcola</button></form>
     <div class="projection-header"><p id="simulation-status" role="status"></p><div class="field"><label for="projection-month">Periodo</label><select id="projection-month" disabled></select></div></div>
     <div class="table-scroll" role="region" aria-label="Risultati" tabindex="0"><table><thead><tr><th scope="col">Elemento</th><th scope="col">Inizio</th><th scope="col">Entrate</th><th scope="col">Uscite</th><th scope="col">Rendimento</th><th scope="col">Disponibilità</th></tr></thead><tbody id="projection-rows"></tbody></table></div>
+    <details id="projection-event-details" class="summary"><summary>Movimenti del periodo</summary><ol id="projection-events"></ol></details>
   </dialog>
 </body>
 </html>

@@ -151,3 +151,68 @@ test('keeps large cyclic flow totals precise after automatic ordering', () => {
   assert.ok(period.nodes.every(({ inflow, outflow, balance }) =>
     [inflow, outflow, balance].every(Number.isSafeInteger)));
 });
+
+test('keeps layout and display data out of financial results and conserves account transfers', () => {
+  const board = {
+    nodes: [node('a', { openingCents: 100_000 }), node('b', { openingCents: 10_000 })],
+    transfers: [transfer('ab', 'a', 'b', { amountCents: 20_000 })],
+  };
+  const moved = { ...board, nodes: board.nodes.map((value) => ({ ...value, x: 320, y: 40, provider: 'Esempio' })) };
+  const [period] = simulateBoard(board, 1, '2027-01');
+  assert.deepEqual(simulateBoard(moved, 1, '2027-01'), [period]);
+  assert.deepEqual(period.nodes.map(({ balance }) => balance), [80_000, 30_000]);
+});
+
+test('orders dated flows within a month and records their effects without duplicating them', () => {
+  const [month] = simulateBoard({
+    nodes: [node('a', { openingCents: 100_000 }), node('income'), node('expense')],
+    transfers: [
+      transfer('credit', 'income', 'a', { amountCents: 50_000, schedule: { frequency: 'once', startDate: '2027-01-20' } }),
+      transfer('debit', 'a', 'expense', { amountCents: 20_000, schedule: { frequency: 'once', startDate: '2027-01-10' } }),
+    ],
+  }, 1, '2027-01');
+  assert.deepEqual(month.timeline.map(({ day, id, fromBalance, toBalance }) => [day, id, fromBalance, toBalance]), [
+    [10, 'debit', 80_000, 20_000],
+    [20, 'credit', -50_000, 130_000],
+  ]);
+  assert.equal(month.nodes[0].balance, 130_000);
+});
+
+test('clamps short months, restores the anchor day, and honors inclusive end dates and exceptions', () => {
+  const board = {
+    nodes: [node('a', { monthlyOutCents: 100, schedule: {
+      frequency: 'monthly', startDate: '2028-01-31', endDate: '2028-04-30', excludedDates: ['2028-02-29'],
+    } })],
+    transfers: [],
+  };
+  const forecast = simulateBoard(board, 5, '2028-01');
+  assert.deepEqual(forecast.map(({ timeline }) => timeline[0]?.day ?? null), [31, null, 31, 30, null]);
+  const leapDay = structuredClone(board);
+  leapDay.nodes[0].schedule.excludedDates = [];
+  assert.equal(simulateBoard(leapDay, 2, '2028-01')[1].timeline[0].day, 29);
+});
+
+test('projects whole annual credits and explicit installments over 24 months in exact cents', () => {
+  const schedule = { frequency: 'annual', startDate: '2027-03-05' };
+  const amount = 1_200_005;
+  const board = { nodes: [
+    node('whole', { monthlyInCents: amount, schedule }),
+    node('parts', { monthlyInCents: amount, schedule: { ...schedule, annualDistribution: 'installments' } }),
+  ], transfers: [] };
+  const forecast = simulateBoard(board, 24, '2027-03');
+  assert.equal(forecast[0].nodes[0].balance, amount);
+  assert.equal(forecast[0].nodes[1].balance, 100_001);
+  assert.deepEqual(forecast[11].nodes.map(({ balance }) => balance), [amount, amount]);
+  assert.deepEqual(forecast[23].nodes.map(({ balance }) => balance), [amount * 2, amount * 2]);
+});
+
+test('runs one-time and interval rules on anchored dates and rejects impossible schedules', () => {
+  const makeBoard = (schedule) => ({ nodes: [node('a', { monthlyOutCents: 500, schedule })], transfers: [] });
+  const once = simulateBoard(makeBoard({ frequency: 'once', startDate: '2027-02-12' }), 3, '2027-01');
+  assert.deepEqual(once.map(({ nodes }) => nodes[0].balance), [0, -500, -500]);
+  const interval = simulateBoard(makeBoard({
+    frequency: 'interval', intervalMonths: 2, occurrences: 2, startDate: '2027-01-15',
+  }), 6, '2027-01');
+  assert.deepEqual(interval.map(({ nodes }) => nodes[0].outflow), [500, 0, 500, 0, 0, 0]);
+  assert.throws(() => simulateBoard(makeBoard({ frequency: 'once', startDate: '2027-02-29' }), 1), /Giorno/);
+});
