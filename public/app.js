@@ -11,6 +11,7 @@ const types = {
 const accountTypes = new Set(['bank', 'deposit', 'investment', 'savings', 'cash']);
 const get = (id) => document.getElementById(id);
 const viewport = get('board-viewport');
+const workspace = viewport.closest('.workspace');
 const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
@@ -20,8 +21,9 @@ const simulation = get('simulation');
 const newNodeDialog = get('new-node-dialog');
 const quickEditor = get('quick-editor');
 const mobilePanels = matchMedia('(max-width: 900px)');
+const nodesPanel = get('nodes-panel');
 const panels = [
-  { element: get('nodes-panel'), button: get('toggle-nodes') },
+  { element: nodesPanel, button: get('toggle-nodes') },
   { element: get('inspector'), button: get('toggle-inspector') },
 ];
 const grid = 20;
@@ -36,14 +38,17 @@ let drag = null;
 let connection = null;
 let connectFrom = null;
 let pendingNodePosition = null;
+let pendingConnectionFrom = null;
 let quickTarget = null;
 let history = [];
 let future = [];
 let storageReadable = true;
+let desktopNodesOpen = true;
 
 const money = (cents) => euro.format(cents / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
 const decimalInput = (number) => String(number).replace('.', ',');
+const providerName = (node) => typeof node.provider === 'string' ? node.provider.trim() : '';
 const signedFlow = (node) => node.monthlyInCents - node.monthlyOutCents;
 const id = () => crypto.randomUUID();
 const snap = (value) => Math.round(value / grid) * grid;
@@ -169,11 +174,17 @@ function redo() {
 }
 
 function updatePanels(openPanel = null) {
+  const mobile = mobilePanels.matches;
   for (const { element, button } of panels) {
-    const open = element.id === openPanel;
-    element.classList.toggle('panel-open', open);
-    button.setAttribute('aria-expanded', String(!mobilePanels.matches || open));
+    const open = mobile ? element.id === openPanel : element !== nodesPanel || desktopNodesOpen;
+    if (element === nodesPanel) {
+      if (!open && element.contains(document.activeElement)) button.focus();
+      element.hidden = !open;
+    }
+    element.classList.toggle('panel-open', mobile && open);
+    button.setAttribute('aria-expanded', String(open));
   }
+  workspace.classList.toggle('nodes-panel-closed', !mobile && !desktopNodesOpen);
 }
 
 function showInspector() {
@@ -427,7 +438,10 @@ function renderBoard(firstMonth) {
     card.style.top = node.y + 'px';
     const balance = createText('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node))));
     if (account && result.balance !== 0) balance.classList.add(result.balance > 0 ? 'positive' : 'negative');
-    card.append(createText('node-type', types[node.type]), createText('node-title', node.name), balance);
+    const provider = providerName(node);
+    const metadata = createText('node-type', provider ? types[node.type] + ' · ' + provider : types[node.type]);
+    if (provider) metadata.title = provider;
+    card.append(metadata, createText('node-title', node.name), balance);
     if (account) {
       card.append(createText('node-caption', 'Disponibilità'));
       if (node.annualRate) card.append(createText('node-rate', percent.format(node.annualRate) + '% annuo'));
@@ -448,6 +462,16 @@ function renderBoard(firstMonth) {
     card.addEventListener('pointerup', () => endNodeDrag(node, card));
     card.addEventListener('dblclick', (event) => { event.stopPropagation(); openQuickEditor('node', node.id, event.clientX, event.clientY); });
     card.addEventListener('keydown', (event) => {
+      if (event.target === card && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        if (viewport.classList.contains('connect-mode')) {
+          chooseConnectionNode(node);
+        } else {
+          const rect = card.getBoundingClientRect();
+          openQuickEditor('node', node.id, rect.right, rect.top);
+        }
+        return;
+      }
       const direction = { ArrowLeft: [-grid, 0], ArrowRight: [grid, 0], ArrowUp: [0, -grid], ArrowDown: [0, grid] }[event.key];
       if (!direction) return;
       event.preventDefault();
@@ -477,7 +501,7 @@ function renderInspector(firstMonth) {
   get('inspector-empty').hidden = Boolean(node || transfer);
   if (node) {
     setValues(nodeForm, {
-      name: node.name, type: node.type, opening: moneyInput(node.openingCents),
+      name: node.name, provider: providerName(node), type: node.type, opening: moneyInput(node.openingCents),
       flow: (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node)), annualRate: decimalInput(node.annualRate),
     });
     nodeForm.classList.toggle('compact-editor', !nodeIsAccount(node));
@@ -558,11 +582,19 @@ function render() {
   applyCamera();
 }
 
-function openNewNode(clientX = null, clientY = null) {
+function openNewNode(clientX = null, clientY = null, origin = connectFrom) {
+  pendingConnectionFrom = origin?.id ?? null;
   pendingNodePosition = clientX === null
     ? screenToWorld(viewport.getBoundingClientRect().left + viewport.clientWidth / 2, viewport.getBoundingClientRect().top + viewport.clientHeight / 2)
     : screenToWorld(clientX, clientY);
+  newNodeDialog.style.left = '';
+  newNodeDialog.style.top = '';
+  newNodeDialog.classList.toggle('is-anchored', clientX !== null && Boolean(origin));
   newNodeDialog.showModal();
+  if (newNodeDialog.classList.contains('is-anchored')) {
+    newNodeDialog.style.left = Math.max(12, Math.min(clientX + 12, innerWidth - newNodeDialog.offsetWidth - 12)) + 'px';
+    newNodeDialog.style.top = Math.max(12, Math.min(clientY + 12, innerHeight - newNodeDialog.offsetHeight - 12)) + 'px';
+  }
 }
 
 function placeQuickEditor(clientX, clientY) {
@@ -582,6 +614,7 @@ function openQuickEditor(kind, key, clientX, clientY) {
     const node = board.nodes.find(({ id }) => id === key);
     get('quick-title').textContent = 'Modifica ' + node.name;
     get('quick-name').value = node.name;
+    get('quick-provider').value = providerName(node);
     get('quick-flow').value = (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node));
     get('quick-opening').value = moneyInput(node.openingCents);
     get('quick-rate').value = decimalInput(node.annualRate);
@@ -617,11 +650,17 @@ function deleteSelection() {
 function finishConnection(clientX, clientY) {
   if (!connection) return;
   const origin = board.nodes.find(({ id }) => id === connection.from);
-  const targetElement = document.elementFromPoint(clientX, clientY)?.closest('.board-node');
+  const hit = document.elementFromPoint(clientX, clientY);
+  const targetElement = hit?.closest('.board-node');
   const target = targetElement && board.nodes.find(({ id }) => id === targetElement.dataset.id);
   connection = null;
   if (!target || target.id === origin.id) {
     drawEdges(simulateBoard(board, 1)[0]);
+    if (!target && hit?.closest('#board-viewport') && !hit.closest('.edge-group')) {
+      nodesLayer.querySelector('[data-id="' + CSS.escape(origin.id) + '"]').focus({ preventScroll: true });
+      openNewNode(clientX, clientY, origin);
+      return;
+    }
     writeStatus('Collegamento annullato.');
     return;
   }
@@ -671,6 +710,16 @@ viewport.addEventListener('pointercancel', () => {
   render();
 });
 
+viewport.addEventListener('keydown', (event) => {
+  if (event.target !== viewport) return;
+  const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+  if (!direction) return;
+  event.preventDefault();
+  camera.x -= direction[0] * 40;
+  camera.y -= direction[1] * 40;
+  applyCamera();
+});
+
 viewport.addEventListener('wheel', (event) => {
   event.preventDefault();
   setZoom(camera.zoom * Math.exp(-event.deltaY * .0012), event.clientX, event.clientY);
@@ -682,7 +731,10 @@ viewport.addEventListener('dblclick', (event) => {
 });
 
 for (const { element, button } of panels) {
-  button.addEventListener('click', () => updatePanels(element.classList.contains('panel-open') ? null : element.id));
+  button.addEventListener('click', () => {
+    if (!mobilePanels.matches && element === nodesPanel) desktopNodesOpen = !desktopNodesOpen;
+    updatePanels(element.classList.contains('panel-open') ? null : element.id);
+  });
 }
 mobilePanels.addEventListener('change', () => updatePanels());
 updatePanels();
@@ -699,8 +751,13 @@ get('new-node-form').addEventListener('submit', (event) => {
   const type = event.submitter?.value;
   if (!Object.hasOwn(types, type)) return;
   const node = makeNode(type, pendingNodePosition.x, pendingNodePosition.y);
-  newNodeDialog.close();
-  if (commit({ ...board, nodes: [...board.nodes, node] }, { kind: 'node', id: node.id }, 'Elemento aggiunto.')) {
+  const origin = board.nodes.find(({ id }) => id === pendingConnectionFrom);
+  const transfers = origin ? [...board.transfers, makeTransfer(origin, node)] : board.transfers;
+  if (commit({ nodes: [...board.nodes, node], transfers }, { kind: 'node', id: node.id },
+    origin ? 'Elemento aggiunto e collegato.' : 'Elemento aggiunto.')) {
+    newNodeDialog.close();
+    viewport.classList.remove('connect-mode');
+    connectFrom = null;
     const rect = viewport.getBoundingClientRect();
     const point = {
       x: rect.left + camera.x + node.x * camera.zoom,
@@ -717,21 +774,25 @@ get('add-transfer').addEventListener('click', () => {
   writeStatus(active ? 'Seleziona il nodo di partenza, poi quello di destinazione.' : 'Modalità collegamento chiusa.');
 });
 
-nodesLayer.addEventListener('click', (event) => {
-  if (!viewport.classList.contains('connect-mode')) return;
-  const element = event.target.closest('.board-node');
-  if (!element) return;
-  const node = board.nodes.find(({ id }) => id === element.dataset.id);
+function chooseConnectionNode(node) {
   if (!connectFrom) {
     connectFrom = node;
-    writeStatus('Ora seleziona il nodo di destinazione.');
+    writeStatus('Seleziona il nodo di destinazione oppure usa Aggiungi.');
     return;
   }
   if (connectFrom.id === node.id) return;
   const transfer = makeTransfer(connectFrom, node);
   viewport.classList.remove('connect-mode');
   connectFrom = null;
-  commit({ ...board, transfers: [...board.transfers, transfer] }, { kind: 'transfer', id: transfer.id }, 'Collegamento creato.');
+  if (commit({ ...board, transfers: [...board.transfers, transfer] }, { kind: 'transfer', id: transfer.id }, 'Collegamento creato.')) {
+    edgesLayer.querySelector('[data-id="' + CSS.escape(transfer.id) + '"]').focus({ preventScroll: true });
+  }
+}
+
+nodesLayer.addEventListener('click', (event) => {
+  if (!viewport.classList.contains('connect-mode')) return;
+  const element = event.target.closest('.board-node');
+  if (element) chooseConnectionNode(board.nodes.find(({ id }) => id === element.dataset.id));
 });
 
 nodeForm.addEventListener('submit', (event) => {
@@ -743,7 +804,7 @@ nodeForm.addEventListener('submit', (event) => {
     const name = String(data.get('name')).trim();
     if (!name) throw new RangeError('Inserisci il nome.');
     let updated = {
-      ...current, name, type: String(data.get('type')),
+      ...current, name, provider: String(data.get('provider')).trim(), type: String(data.get('type')),
       openingCents: nodeIsAccount({ type: String(data.get('type')) }) ? toCents(data.get('opening'), 'Saldo', true) : 0,
       annualRate: nodeIsAccount({ type: String(data.get('type')) }) ? parseDecimal(data.get('annualRate'), 'Rendimento', -100, 100, 4) : 0,
     };
@@ -775,7 +836,20 @@ transferForm.addEventListener('submit', (event) => {
 
 get('delete-node').addEventListener('click', deleteSelection);
 get('delete-transfer').addEventListener('click', deleteSelection);
-get('close-quick-editor').addEventListener('click', () => quickEditor.hidePopover());
+function closeQuickEditor() {
+  quickEditor.hidePopover();
+  const layer = quickTarget.kind === 'node' ? nodesLayer : edgesLayer;
+  layer.querySelector('[data-id="' + CSS.escape(quickTarget.id) + '"]')?.focus({ preventScroll: true });
+  quickTarget = null;
+}
+
+get('close-quick-editor').addEventListener('click', closeQuickEditor);
+quickEditor.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeQuickEditor();
+});
 
 get('quick-form').addEventListener('submit', (event) => {
   event.preventDefault();
@@ -785,21 +859,22 @@ get('quick-form').addEventListener('submit', (event) => {
       let updated = {
         ...current,
         name: get('quick-name').value.trim(),
+        provider: get('quick-provider').value.trim(),
         openingCents: nodeIsAccount(current) ? toCents(get('quick-opening').value, 'Disponibilità', true) : 0,
         annualRate: nodeIsAccount(current) ? parseDecimal(get('quick-rate').value, 'Rendimento', -100, 100, 4) : 0,
       };
       if (!updated.name) throw new RangeError('Inserisci il nome.');
       updated = applySignedFlow(updated, toCents(get('quick-flow').value, 'Flusso', true));
-      commit({ ...board, nodes: board.nodes.map((node) => node.id === updated.id ? updated : node) }, { kind: 'node', id: updated.id }, 'Elemento aggiornato.');
+      if (!commit({ ...board, nodes: board.nodes.map((node) => node.id === updated.id ? updated : node) }, { kind: 'node', id: updated.id }, 'Elemento aggiornato.')) return;
     } else {
       const current = board.transfers.find(({ id }) => id === quickTarget.id);
       const raw = get('quick-transfer-value').value.trim();
       const percentage = raw.endsWith('%');
       const value = parseDecimal(percentage ? raw.slice(0, -1) : raw, 'Valore', 0, percentage ? 100 : 9_999_999.99);
       const updated = { ...current, mode: percentage ? 'percent' : 'fixed', amountCents: percentage ? 0 : Math.round(value * 100), percent: percentage ? value : 0 };
-      commit({ ...board, transfers: board.transfers.map((transfer) => transfer.id === updated.id ? updated : transfer) }, { kind: 'transfer', id: updated.id }, 'Collegamento aggiornato.');
+      if (!commit({ ...board, transfers: board.transfers.map((transfer) => transfer.id === updated.id ? updated : transfer) }, { kind: 'transfer', id: updated.id }, 'Collegamento aggiornato.')) return;
     }
-    quickEditor.hidePopover();
+    closeQuickEditor();
   } catch (error) {
     writeStatus(error.message);
   }
