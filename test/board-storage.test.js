@@ -53,7 +53,7 @@ test('migrates legacy and singular versioned records without changing board data
   for (const [key, record] of [[legacyKey, initialBoard], [archiveKey, createBoardBackup(initialBoard)]]) {
     await context.test(key, async (child) => {
       const raw = setupLocalStorage(child, key, record);
-      const store = await openBoardStorage(validateBoard);
+      const store = await openBoardStorage(validateBoard, () => assert.fail('Unexpected demo seed'));
       assert.equal(store.archive.scenarios.length, 1);
       assert.equal(store.archive.scenarios[0].name, 'Scenario principale');
       assert.deepEqual(store.board, initialBoard);
@@ -64,6 +64,19 @@ test('migrates legacy and singular versioned records without changing board data
       assert.deepEqual(reopened.archive.scenarios, store.archive.scenarios);
     });
   }
+});
+
+test('seeds a deletable demo once in a new archive', async (context) => {
+  setupLocalStorage(context, archiveKey, null);
+  const first = await openBoardStorage(validateBoard, () => initialBoard);
+  assert.equal(first.archive.scenarios.length, 2);
+  const demo = first.archive.scenarios.find(({ name }) => name === 'Demo');
+  assert.deepEqual(demo.board, initialBoard);
+  assert.notEqual(first.archive.activeId, demo.id);
+
+  await first.deleteScenario(demo.id);
+  const reopened = await openBoardStorage(validateBoard, () => assert.fail('Unexpected demo reseed'));
+  assert.deepEqual(reopened.archive.scenarios, first.archive.scenarios);
 });
 
 test('applies a queued save to the scenario that produced the edit during a switch', async (context) => {
