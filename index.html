@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=board-keyboard">
-  <script src="./public/app.js?v=board-keyboard" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=node-provider">
+  <script src="./public/app.js?v=node-provider" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -63,6 +63,7 @@
         <p id="inspector-empty" class="empty-copy">Seleziona un elemento o una freccia. Con il doppio click puoi modificare i dati direttamente sulla board.</p>
         <form id="node-form" class="editor" hidden>
           <div class="field"><label for="node-name">Nome</label><input id="node-name" name="name" type="text" maxlength="60" required></div>
+          <div class="field"><label for="node-provider">Fornitore</label><input id="node-provider" name="provider" type="text" maxlength="60"></div>
           <div class="field"><label for="node-type">Tipo</label><select id="node-type" name="type" required>
             <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
           </select></div>
@@ -89,6 +90,7 @@
       <div class="quick-heading"><strong id="quick-title">Modifica</strong><button id="close-quick-editor" type="button" aria-label="Chiudi">×</button></div>
       <div id="quick-node-fields">
         <label for="quick-name">Nome</label><input id="quick-name" name="name" maxlength="60">
+        <label for="quick-provider">Fornitore</label><input id="quick-provider" name="provider" maxlength="60">
         <label for="quick-flow">Flusso mensile</label><input id="quick-flow" name="flow" inputmode="decimal"><small>+ entrata · − uscita</small>
         <div class="quick-account-field"><label for="quick-opening">Disponibilità iniziale</label><input id="quick-opening" name="opening" inputmode="decimal"></div>
         <div class="quick-account-field"><label for="quick-rate">Rendimento annuo %</label><input id="quick-rate" name="annualRate" inputmode="decimal"></div>

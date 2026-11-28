@@ -146,7 +146,7 @@ h3 { font-size: .76rem; }
 .board-node[data-type="expense"] .node-type,
 .board-node[data-type="expense"] .node-caption { color: #ff6b81; }
 .board-node[aria-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 12px 30px #000b; }
-.node-type { grid-column: 1 / -1; margin-bottom: 4px; color: var(--muted); font-size: .63rem; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
+.node-type { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; color: var(--muted); font-size: .63rem; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
 .node-title { min-width: 0; overflow: hidden; font-size: .9rem; font-weight: 760; letter-spacing: -.012em; text-overflow: ellipsis; white-space: nowrap; }
 .node-balance { grid-column: 1 / -1; margin-top: 9px; font-family: "Noto Sans Mono", ui-monospace, monospace; font-size: 1.22rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
 .node-caption { grid-column: 1 / -1; margin-top: 2px; color: var(--muted); font-size: .64rem; }

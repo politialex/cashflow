@@ -44,6 +44,7 @@ let storageReadable = true;
 const money = (cents) => euro.format(cents / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
 const decimalInput = (number) => String(number).replace('.', ',');
+const providerName = (node) => typeof node.provider === 'string' ? node.provider.trim() : '';
 const signedFlow = (node) => node.monthlyInCents - node.monthlyOutCents;
 const id = () => crypto.randomUUID();
 const snap = (value) => Math.round(value / grid) * grid;
@@ -427,7 +428,10 @@ function renderBoard(firstMonth) {
     card.style.top = node.y + 'px';
     const balance = createText('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node))));
     if (account && result.balance !== 0) balance.classList.add(result.balance > 0 ? 'positive' : 'negative');
-    card.append(createText('node-type', types[node.type]), createText('node-title', node.name), balance);
+    const provider = providerName(node);
+    const metadata = createText('node-type', provider ? types[node.type] + ' · ' + provider : types[node.type]);
+    if (provider) metadata.title = provider;
+    card.append(metadata, createText('node-title', node.name), balance);
     if (account) {
       card.append(createText('node-caption', 'Disponibilità'));
       if (node.annualRate) card.append(createText('node-rate', percent.format(node.annualRate) + '% annuo'));
@@ -477,7 +481,7 @@ function renderInspector(firstMonth) {
   get('inspector-empty').hidden = Boolean(node || transfer);
   if (node) {
     setValues(nodeForm, {
-      name: node.name, type: node.type, opening: moneyInput(node.openingCents),
+      name: node.name, provider: providerName(node), type: node.type, opening: moneyInput(node.openingCents),
       flow: (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node)), annualRate: decimalInput(node.annualRate),
     });
     nodeForm.classList.toggle('compact-editor', !nodeIsAccount(node));
@@ -582,6 +586,7 @@ function openQuickEditor(kind, key, clientX, clientY) {
     const node = board.nodes.find(({ id }) => id === key);
     get('quick-title').textContent = 'Modifica ' + node.name;
     get('quick-name').value = node.name;
+    get('quick-provider').value = providerName(node);
     get('quick-flow').value = (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node));
     get('quick-opening').value = moneyInput(node.openingCents);
     get('quick-rate').value = decimalInput(node.annualRate);
@@ -743,7 +748,7 @@ nodeForm.addEventListener('submit', (event) => {
     const name = String(data.get('name')).trim();
     if (!name) throw new RangeError('Inserisci il nome.');
     let updated = {
-      ...current, name, type: String(data.get('type')),
+      ...current, name, provider: String(data.get('provider')).trim(), type: String(data.get('type')),
       openingCents: nodeIsAccount({ type: String(data.get('type')) }) ? toCents(data.get('opening'), 'Saldo', true) : 0,
       annualRate: nodeIsAccount({ type: String(data.get('type')) }) ? parseDecimal(data.get('annualRate'), 'Rendimento', -100, 100, 4) : 0,
     };
@@ -785,6 +790,7 @@ get('quick-form').addEventListener('submit', (event) => {
       let updated = {
         ...current,
         name: get('quick-name').value.trim(),
+        provider: get('quick-provider').value.trim(),
         openingCents: nodeIsAccount(current) ? toCents(get('quick-opening').value, 'Disponibilità', true) : 0,
         annualRate: nodeIsAccount(current) ? parseDecimal(get('quick-rate').value, 'Rendimento', -100, 100, 4) : 0,
       };
