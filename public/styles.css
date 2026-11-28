@@ -164,10 +164,11 @@ h3 { font-size: .76rem; }
 #board-status:not(:empty) { padding: 7px 10px; background: #202020ed; border: 1px solid var(--border-strong); border-radius: 4px; box-shadow: 0 5px 18px #0007; }
 
 .board-tools { position: absolute; z-index: 5; bottom: 18px; left: 50%; display: flex; align-items: center; gap: 4px; padding: 4px; background: #1f1f1ff2; border: 1px solid #353535; border-radius: 4px; box-shadow: 0 10px 28px #000a; transform: translateX(-50%); backdrop-filter: blur(14px); }
-.board-tools button { min-height: 38px; padding: 7px 13px; font-size: .72rem; font-weight: 710; }
+.board-tools button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 7px 13px; font-size: .72rem; font-weight: 710; }
 .primary-button { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 650; }
 .primary-button:hover { color: var(--accent-ink); background: var(--accent-hover); border-color: var(--accent-hover); }
-.tool-divider { width: 1px; height: 24px; background: var(--border); }
+.tool-icon { font-size: .94rem; line-height: 1; }
+#add-transfer[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .zoom-controls {
   position: absolute;
   z-index: 5;
@@ -244,6 +245,10 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
   body { grid-template-rows: 48px minmax(0, 1fr); }
   .site-header { gap: 8px; padding: 6px 8px; }.brand { font-size: .9rem; }.brand-mark { width: 30px; height: 30px; }.header-actions { gap: 4px; }.header-actions button { padding-inline: 7px; font-size: .68rem; }
   .board-tools { bottom: max(10px, env(safe-area-inset-bottom)); gap: 4px; padding: 5px; }.board-tools button { padding-inline: 8px; font-size: .67rem; }.tool-divider { display: none; }
-  .zoom-controls { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 56px); }
+  .zoom-controls { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 62px); }
   .account-node { width: 220px; }.node-type-grid { grid-template-columns: 1fr; }.small-dialog { max-height: calc(100dvh - 24px); overflow: auto; }
+}
+
+@media (max-width: 360px) {
+  .brand > span:last-child { display: none; }
 }

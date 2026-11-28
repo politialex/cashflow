@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=canvas-backlog">
-  <script src="./public/app.js?v=canvas-backlog" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=toolbar-actions">
+  <script src="./public/app.js?v=toolbar-actions" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -19,6 +19,7 @@
     <div class="header-actions">
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
       <button id="toggle-inspector" type="button" aria-controls="inspector" aria-expanded="false">Dettagli</button>
+      <button id="load-example" type="button">Scenario demo</button>
     </div>
   </header>
 
@@ -50,11 +51,9 @@
           <output id="zoom-level" aria-label="Livello di zoom">100%</output>
         </div>
         <div class="board-tools">
-          <button id="add-node" class="primary-button" type="button">Aggiungi</button>
-          <button id="add-transfer" type="button">Collega</button>
-          <button id="load-example" type="button">Scenario demo</button>
-          <span class="tool-divider" aria-hidden="true"></span>
-          <button id="open-simulation" type="button" aria-haspopup="dialog" aria-controls="simulation">Simula</button>
+          <button id="add-node" class="primary-button" type="button"><span class="tool-icon" aria-hidden="true">＋</span>Aggiungi</button>
+          <button id="add-transfer" type="button" aria-pressed="false"><span class="tool-icon" aria-hidden="true">→</span>Collega</button>
+          <button id="open-simulation" type="button" aria-haspopup="dialog" aria-controls="simulation"><span class="tool-icon" aria-hidden="true">▶</span>Simula</button>
         </div>
       </div>
 
