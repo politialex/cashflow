@@ -1292,8 +1292,7 @@ restoreBackupButton.addEventListener('click', async () => {
   history = [];
   future = [];
   selected = null;
-  connectFrom = null;
-  viewport.classList.remove('connect-mode');
+  setConnectMode(false);
   if (quickEditor.matches(':popover-open')) quickEditor.hidePopover();
   quickTarget = null;
   backupDialog.close();
@@ -1321,17 +1320,21 @@ newNodeForm.addEventListener('submit', (event) => {
   if (commit({ nodes: [...board.nodes, node], transfers }, { kind: 'node', id: node.id },
     origin ? 'Elemento aggiunto e collegato.' : 'Elemento aggiunto.')) {
     closeNewNode(false);
-    viewport.classList.remove('connect-mode');
-    connectFrom = null;
+    setConnectMode(false);
     if (mobilePanels.matches) updatePanels();
     openQuickEditor('node', node.id);
   }
 });
 
-get('add-transfer').addEventListener('click', () => {
+function setConnectMode(active) {
   connectFrom = null;
-  viewport.classList.toggle('connect-mode');
-  const active = viewport.classList.contains('connect-mode');
+  viewport.classList.toggle('connect-mode', active);
+  get('add-transfer').setAttribute('aria-pressed', String(active));
+}
+
+get('add-transfer').addEventListener('click', () => {
+  const active = !viewport.classList.contains('connect-mode');
+  setConnectMode(active);
   writeStatus(active ? 'Seleziona il nodo di partenza, poi quello di destinazione.' : 'Modalità collegamento chiusa.');
 });
 
@@ -1343,8 +1346,7 @@ function chooseConnectionNode(node) {
   }
   if (connectFrom.id === node.id) return;
   const transfer = makeTransfer(connectFrom, node);
-  viewport.classList.remove('connect-mode');
-  connectFrom = null;
+  setConnectMode(false);
   if (commit({ ...board, transfers: [...board.transfers, transfer] }, { kind: 'transfer', id: transfer.id }, 'Collegamento creato.')) {
     edgesLayer.querySelector('[data-id="' + CSS.escape(transfer.id) + '"]').focus({ preventScroll: true });
   }
@@ -1433,8 +1435,8 @@ async function changeScenario(operation, replaceBoard = true) {
       selected = null;
       drag = null;
       connection = null;
-      connectFrom = null;
-      viewport.classList.remove('connect-mode', 'is-panning');
+      setConnectMode(false);
+      viewport.classList.remove('is-panning');
       selectionBox.hidden = true;
       render();
       fitView();
@@ -1589,8 +1591,7 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     deleteSelection();
   } else if (event.key === 'Escape') {
-    viewport.classList.remove('connect-mode');
-    connectFrom = null;
+    setConnectMode(false);
     if (drag?.kind === 'node') {
       const { id: draggedId } = drag;
       drag = null;

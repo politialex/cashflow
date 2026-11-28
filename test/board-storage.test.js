@@ -10,7 +10,7 @@ const initialBoard = {
     {
       id: 'bank', name: 'Conto prova', type: 'bank', x: 40, y: 80,
       openingCents: 5000, monthlyInCents: 300, monthlyOutCents: 100, annualRate: 0,
-      schedule: { startDate: '2026-11-01' },
+      schedule: { frequency: 'monthly', startDate: '2026-11-01' },
     },
     {
       id: 'saving', name: 'Deposito prova', type: 'deposit', x: 280, y: 80,
