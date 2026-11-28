@@ -342,10 +342,13 @@ h3 { font-size: .76rem; }
 .tool-icon { font-size: .94rem; line-height: 1; }
 #add-transfer[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -3px; }
 .zoom-controls {
+  --map-controls-bottom: max(18px, env(safe-area-inset-bottom));
   position: absolute;
   z-index: 5;
   right: max(14px, env(safe-area-inset-right));
-  bottom: max(18px, env(safe-area-inset-bottom));
+  bottom: var(--map-controls-bottom);
+  max-height: calc(100% - var(--map-controls-bottom) - 8px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -354,9 +357,14 @@ h3 { font-size: .76rem; }
   box-shadow: 0 8px 24px #0008;
   backdrop-filter: blur(14px);
 }
-.zoom-controls button { width: 52px; min-height: 44px; padding: 0; border: 0; background: transparent; font-size: 1rem; }
+.zoom-controls button { flex: none; width: 52px; min-height: 44px; padding: 0; border: 0; background: transparent; font-size: 1rem; }
+.zoom-controls button:focus-visible { outline-offset: -3px; }
 .zoom-controls button + button { border-top: 1px solid var(--border); }
 .zoom-controls #fit-view { font-size: .68rem; }
+#toggle-fullscreen svg { display: block; width: 19px; height: 19px; margin: auto; }
+#toggle-fullscreen[aria-pressed="false"] .fullscreen-exit,
+#toggle-fullscreen[aria-pressed="true"] .fullscreen-enter { display: none; }
+#toggle-fullscreen[aria-disabled="true"] { color: var(--muted); cursor: default; }
 .zoom-controls output { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .editor { display: grid; gap: 11px; }
@@ -418,7 +426,7 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
 }
 
 @media (901px <= width <= 1100px) {
-  .zoom-controls { bottom: 72px; }
+  .zoom-controls { --map-controls-bottom: 72px; }
 }
 
 @media (max-width: 900px) {
@@ -432,7 +440,7 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
   body { grid-template-rows: auto minmax(0, 1fr); }
   .site-header { gap: 8px; padding: 6px 8px; }.brand { font-size: .9rem; }.brand-mark { width: 30px; height: 30px; }.header-actions { gap: 4px; }.header-actions button { padding-inline: 7px; font-size: .68rem; }
   .board-empty { width: min(260px, calc(100% - 144px)); }
-  .zoom-controls { bottom: max(16px, env(safe-area-inset-bottom)); }
+  .zoom-controls { --map-controls-bottom: max(16px, env(safe-area-inset-bottom)); }
   .account-node { width: 220px; }.node-type-grid { grid-template-columns: 1fr; }.small-dialog { max-height: calc(100dvh - 24px); overflow: auto; }
 }
 
