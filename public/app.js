@@ -15,6 +15,7 @@ const workspace = viewport.closest('.workspace');
 const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
+const selectionBox = get('board-selection-box');
 const nodeForm = get('node-form');
 const transferForm = get('transfer-form');
 const simulation = get('simulation');
@@ -317,15 +318,15 @@ function svgElement(name, attributes = {}) {
   return element;
 }
 
-function drawEdges(firstMonth, temporaryPoint = null) {
+function drawEdges(firstMonth, temporaryPoint = null, nodes = board.nodes) {
   const defs = svgElement('defs');
   const marker = svgElement('marker', { id: 'flow-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto' });
   marker.append(svgElement('path', { d: 'M 0 0 L 10 5 L 0 10 z' }));
   defs.append(marker);
   const content = [defs];
   for (const transfer of board.transfers) {
-    const from = board.nodes.find(({ id }) => id === transfer.from);
-    const to = board.nodes.find(({ id }) => id === transfer.to);
+    const from = nodes.find(({ id }) => id === transfer.from);
+    const to = nodes.find(({ id }) => id === transfer.to);
     const [fromSide, toSide] = bestSides(from, to);
     const start = connectionAnchor(from, fromSide);
     const end = connectionAnchor(to, toSide);
@@ -350,7 +351,7 @@ function drawEdges(firstMonth, temporaryPoint = null) {
     content.push(group);
   }
   if (connection && temporaryPoint) {
-    const from = board.nodes.find(({ id }) => id === connection.from);
+    const from = nodes.find(({ id }) => id === connection.from);
     const start = connectionAnchor(from, connection.side);
     content.push(svgElement('path', { class: 'board-edge is-drawing', d: edgePath(start, temporaryPoint, connection.side) }));
   }
@@ -370,46 +371,115 @@ function select(kind, key, openPanel = false) {
   if (openPanel) showInspector();
 }
 
+function isNodeSelected(key) {
+  return selected?.kind === 'node' && (selected.ids?.has(key) ?? selected.id === key);
+}
+
+function nodeSelection(ids, lead = ids.at(-1)) {
+  if (!ids.length) return null;
+  return ids.length === 1 ? { kind: 'node', id: lead } : { kind: 'node', id: lead, ids: new Set(ids) };
+}
+
+function setCardSelection(card, name) {
+  const active = isNodeSelected(card.dataset.id);
+  card.setAttribute('aria-selected', String(active));
+  card.setAttribute('aria-label', name + (active ? ', selezionato' : ', non selezionato'));
+}
+
+function updateSelection(selection) {
+  selected = selection;
+  for (const card of nodesLayer.children) {
+    setCardSelection(card, card.querySelector('.node-title').textContent);
+  }
+  for (const item of get('node-list').children) {
+    item.setAttribute('aria-pressed', String(isNodeSelected(item.dataset.id)));
+  }
+  const firstMonth = simulateBoard(board, 1)[0];
+  renderInspector(firstMonth);
+  drawEdges(firstMonth);
+}
+
+function toggleNodeSelection(key) {
+  const ids = selected?.kind === 'node' ? new Set(selected.ids ?? [selected.id]) : new Set();
+  if (ids.has(key)) {
+    ids.delete(key);
+    updateSelection(nodeSelection([...ids]));
+  } else {
+    ids.add(key);
+    updateSelection(nodeSelection([...ids], key));
+  }
+  writeStatus(ids.size ? 'Nodi selezionati: ' + ids.size + '.' : 'Selezione rimossa.');
+}
+
+function selectionForMove(node) {
+  return isNodeSelected(node.id) ? { ...selected, id: node.id } : { kind: 'node', id: node.id };
+}
+
+function moveNodes(selection, dx, dy) {
+  if (!selection.ids) {
+    const node = board.nodes.find(({ id }) => id === selection.id);
+    const position = boundPosition(node.type, node.x + dx, node.y + dy, true);
+    if (position.x === node.x && position.y === node.y) return board.nodes;
+    return board.nodes.map((item) => item === node ? { ...item, ...position } : item);
+  }
+
+  // Clamp the common, snapped offset against every selected card before moving any card.
+  let left = -Infinity;
+  let right = Infinity;
+  let top = -Infinity;
+  let bottom = Infinity;
+  for (const node of board.nodes) {
+    if (!selection.ids.has(node.id)) continue;
+    const size = nodeSize(node);
+    left = Math.max(left, -node.x);
+    right = Math.min(right, world.width - node.x - size.width);
+    top = Math.max(top, -node.y);
+    bottom = Math.min(bottom, world.height - node.y - size.height);
+  }
+  const offsetX = Math.max(Math.ceil(left / grid) * grid, Math.min(snap(dx), Math.floor(right / grid) * grid));
+  const offsetY = Math.max(Math.ceil(top / grid) * grid, Math.min(snap(dy), Math.floor(bottom / grid) * grid));
+  if (offsetX === 0 && offsetY === 0) return board.nodes;
+  return board.nodes.map((node) => selection.ids.has(node.id)
+    ? { ...node, x: node.x + offsetX, y: node.y + offsetY }
+    : node);
+}
+
 function startNodeDrag(event, node, card) {
-  if (event.button !== 0 || event.target.closest('.node-port')) return;
+  if (drag || connection || event.button !== 0 || event.target.closest('.node-port')) return;
   event.stopPropagation();
-  drag = { kind: 'node', id: node.id, startX: event.clientX, startY: event.clientY, x: node.x, y: node.y, moved: false };
+  drag = {
+    kind: 'node', id: node.id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+    selection: selectionForMove(node), toggle: event.shiftKey, nodes: board.nodes,
+  };
   card.setPointerCapture(event.pointerId);
 }
 
-function moveNodeDrag(event, node, card) {
-  if (drag?.kind !== 'node' || drag.id !== node.id) return;
+function moveNodeDrag(event, node) {
+  if (drag?.kind !== 'node' || drag.id !== node.id || drag.pointerId !== event.pointerId || drag.toggle) return;
   const dx = (event.clientX - drag.startX) / camera.zoom;
   const dy = (event.clientY - drag.startY) / camera.zoom;
-  if (!drag.moved && Math.hypot(dx, dy) < 3) return;
-  drag.moved = true;
-  const { x, y } = boundPosition(node.type, drag.x + dx, drag.y + dy, true);
-  card.style.left = x + 'px';
-  card.style.top = y + 'px';
-  const preview = board.nodes.map((item) => item.id === node.id ? { ...item, x, y } : item);
-  const saved = board.nodes;
-  board.nodes = preview;
-  drawEdges(simulateBoard(board, 1)[0]);
-  board.nodes = saved;
+  if (!drag.firstMonth && Math.hypot(dx, dy) < 3) return;
+  drag.firstMonth ??= simulateBoard(board, 1)[0];
+  drag.nodes = moveNodes(drag.selection, dx, dy);
+  const positions = new Map(drag.nodes.map((item) => [item.id, item]));
+  for (const card of nodesLayer.children) {
+    const position = positions.get(card.dataset.id);
+    card.style.left = position.x + 'px';
+    card.style.top = position.y + 'px';
+  }
+  drawEdges(drag.firstMonth, null, drag.nodes);
 }
 
-function endNodeDrag(node, card) {
-  if (drag?.kind !== 'node' || drag.id !== node.id) return;
-  const moved = drag.moved;
-  const x = Number.parseFloat(card.style.left);
-  const y = Number.parseFloat(card.style.top);
+function endNodeDrag(event, node) {
+  if (drag?.kind !== 'node' || drag.id !== node.id || drag.pointerId !== event.pointerId) return;
+  const { nodes, selection, toggle, firstMonth } = drag;
   drag = null;
-  if (moved) {
-    commit({ ...board, nodes: board.nodes.map((item) => item.id === node.id ? { ...item, x, y } : item) }, { kind: 'node', id: node.id }, 'Posizione aggiornata.');
+  if (toggle) {
+    toggleNodeSelection(node.id);
+  } else if (nodes !== board.nodes) {
+    commit({ ...board, nodes }, selection, 'Posizione aggiornata.');
   } else {
-    selected = { kind: 'node', id: node.id };
-    for (const element of nodesLayer.querySelectorAll('.board-node')) {
-      element.setAttribute('aria-selected', String(element.dataset.id === node.id));
-    }
-    const firstMonth = simulateBoard(board, 1)[0];
-    renderInspector(firstMonth);
-    renderNodeList(firstMonth);
-    drawEdges(firstMonth);
+    updateSelection(firstMonth ? selection : nodeSelection([node.id]));
   }
 }
 
@@ -433,7 +503,7 @@ function renderBoard(firstMonth) {
     card.dataset.type = node.type;
     card.dataset.id = node.id;
     card.tabIndex = 0;
-    card.setAttribute('aria-selected', String(selected?.kind === 'node' && selected.id === node.id));
+    setCardSelection(card, node.name);
     card.style.left = node.x + 'px';
     card.style.top = node.y + 'px';
     const balance = createText('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node))));
@@ -458,14 +528,23 @@ function renderBoard(firstMonth) {
       card.append(port);
     }
     card.addEventListener('pointerdown', (event) => startNodeDrag(event, node, card));
-    card.addEventListener('pointermove', (event) => moveNodeDrag(event, node, card));
-    card.addEventListener('pointerup', () => endNodeDrag(node, card));
+    card.addEventListener('pointermove', (event) => moveNodeDrag(event, node));
+    card.addEventListener('pointerup', (event) => endNodeDrag(event, node));
+    card.addEventListener('lostpointercapture', (event) => {
+      if (drag?.kind !== 'node' || drag.pointerId !== event.pointerId) return;
+      drag = null;
+      render();
+    });
     card.addEventListener('dblclick', (event) => { event.stopPropagation(); openQuickEditor('node', node.id, event.clientX, event.clientY); });
     card.addEventListener('keydown', (event) => {
-      if (event.target === card && (event.key === 'Enter' || event.key === ' ')) {
+      if (event.target !== card) return;
+      if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
+        if (event.repeat) return;
         if (viewport.classList.contains('connect-mode')) {
           chooseConnectionNode(node);
+        } else if (event.shiftKey) {
+          toggleNodeSelection(node.id);
         } else {
           const rect = card.getBoundingClientRect();
           openQuickEditor('node', node.id, rect.right, rect.top);
@@ -476,10 +555,10 @@ function renderBoard(firstMonth) {
       if (!direction) return;
       event.preventDefault();
       const scale = event.shiftKey ? 3 : 1;
-      const position = boundPosition(node.type, node.x + direction[0] * scale, node.y + direction[1] * scale, true);
-      if (position.x === node.x && position.y === node.y) return;
-      const nodes = board.nodes.map((item) => item.id === node.id ? { ...item, ...position } : item);
-      if (commit({ ...board, nodes }, { kind: 'node', id: node.id }, 'Posizione aggiornata.')) {
+      const selection = selectionForMove(node);
+      const nodes = moveNodes(selection, direction[0] * scale, direction[1] * scale);
+      if (nodes === board.nodes) return;
+      if (commit({ ...board, nodes }, selection, 'Posizione aggiornata.')) {
         nodesLayer.querySelector('[data-id="' + CSS.escape(node.id) + '"]').focus({ preventScroll: true });
       }
     });
@@ -534,9 +613,10 @@ function renderNodeList(firstMonth) {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'node-list-item';
+    item.dataset.id = node.id;
     item.dataset.type = node.type;
     item.setAttribute('role', 'listitem');
-    item.setAttribute('aria-pressed', String(selected?.kind === 'node' && selected.id === node.id));
+    item.setAttribute('aria-pressed', String(isNodeSelected(node.id)));
     item.append(createText('list-name', node.name), createText('list-value', nodeIsAccount(node) ? money(results.get(node.id).balance) : money(Math.abs(signedFlow(node)))));
     item.addEventListener('click', () => {
       select('node', node.id);
@@ -670,17 +750,42 @@ function finishConnection(clientX, clientY) {
   }
 }
 
+function selectionRect(event) {
+  const rect = viewport.getBoundingClientRect();
+  const x = Math.min(rect.right, Math.max(rect.left, event.clientX));
+  const y = Math.min(rect.bottom, Math.max(rect.top, event.clientY));
+  return {
+    left: Math.min(drag.startX, x), right: Math.max(drag.startX, x),
+    top: Math.min(drag.startY, y), bottom: Math.max(drag.startY, y),
+  };
+}
+
 viewport.addEventListener('pointerdown', (event) => {
+  if (drag || connection) return;
   if (event.target.closest('.board-node') || event.target.closest('.edge-group')) return;
   if (event.button !== 0 && event.button !== 1) return;
+  viewport.setPointerCapture(event.pointerId);
+  if (event.button === 0 && event.shiftKey && !viewport.classList.contains('connect-mode')) {
+    drag = { kind: 'selection', startX: event.clientX, startY: event.clientY, pointerId: event.pointerId };
+    return;
+  }
   drag = { kind: 'canvas', startX: event.clientX, startY: event.clientY, x: camera.x, y: camera.y };
   viewport.classList.add('is-panning');
-  viewport.setPointerCapture(event.pointerId);
   selected = null;
   render();
 });
 
 viewport.addEventListener('pointermove', (event) => {
+  if (drag?.kind === 'selection' && drag.pointerId === event.pointerId) {
+    const bounds = selectionRect(event);
+    const rect = viewport.getBoundingClientRect();
+    selectionBox.style.left = bounds.left - rect.left + 'px';
+    selectionBox.style.top = bounds.top - rect.top + 'px';
+    selectionBox.style.width = bounds.right - bounds.left + 'px';
+    selectionBox.style.height = bounds.bottom - bounds.top + 'px';
+    selectionBox.hidden = false;
+    return;
+  }
   if (connection) {
     drawEdges(simulateBoard(board, 1)[0], screenToWorld(event.clientX, event.clientY));
     return;
@@ -692,6 +797,20 @@ viewport.addEventListener('pointermove', (event) => {
 });
 
 viewport.addEventListener('pointerup', (event) => {
+  if (drag?.kind === 'selection' && drag.pointerId === event.pointerId) {
+    const bounds = selectionRect(event);
+    drag = null;
+    selectionBox.hidden = true;
+    const within = bounds.right - bounds.left >= 3 && bounds.bottom - bounds.top >= 3
+      ? [...nodesLayer.children].filter((card) => {
+        const rect = card.getBoundingClientRect();
+        return rect.right > bounds.left && rect.left < bounds.right && rect.bottom > bounds.top && rect.top < bounds.bottom;
+      })
+      : [];
+    updateSelection(nodeSelection(within.map((card) => card.dataset.id)));
+    writeStatus(within.length ? 'Nodi selezionati: ' + within.length + '.' : 'Selezione rimossa.');
+    return;
+  }
   if (connection) {
     finishConnection(event.clientX, event.clientY);
     return;
@@ -706,6 +825,7 @@ viewport.addEventListener('pointerup', (event) => {
 viewport.addEventListener('pointercancel', () => {
   connection = null;
   drag = null;
+  selectionBox.hidden = true;
   viewport.classList.remove('is-panning');
   render();
 });
@@ -913,6 +1033,7 @@ get('projection-month').addEventListener('change', () => drawProjection(simulate
 
 document.addEventListener('keydown', (event) => {
   if (event.target.matches('input, select, textarea') || quickEditor.matches(':popover-open')) return;
+  if (drag?.kind === 'node' && event.key !== 'Escape') return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();
     event.shiftKey ? redo() : undo();
@@ -925,6 +1046,16 @@ document.addEventListener('keydown', (event) => {
   } else if (event.key === 'Escape') {
     viewport.classList.remove('connect-mode');
     connectFrom = null;
+    if (drag?.kind === 'node') {
+      const { id: draggedId } = drag;
+      drag = null;
+      render();
+      nodesLayer.querySelector('[data-id="' + CSS.escape(draggedId) + '"]').focus({ preventScroll: true });
+    } else if (drag?.kind === 'selection') {
+      drag = null;
+      selectionBox.hidden = true;
+    }
+    if (selected) updateSelection(null);
     updatePanels();
   }
 });
