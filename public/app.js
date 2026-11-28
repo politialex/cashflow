@@ -391,7 +391,7 @@ function updateSelection(selection) {
   for (const card of nodesLayer.children) {
     setCardSelection(card, card.querySelector('.node-title').textContent);
   }
-  for (const item of get('node-list').children) {
+  for (const item of get('node-list').querySelectorAll('.node-list-item')) {
     item.setAttribute('aria-pressed', String(isNodeSelected(item.dataset.id)));
   }
   const firstMonth = simulateBoard(board, 1)[0];
@@ -607,27 +607,83 @@ function renderInspector(firstMonth) {
 }
 
 function renderNodeList(firstMonth) {
+  const list = get('node-list');
+  const collapsed = new Set([...list.querySelectorAll('details:not([open])')].map((section) => section.dataset.group));
   const results = new Map(firstMonth.nodes.map((result) => [result.id, result]));
-  get('node-list-empty').hidden = board.nodes.length > 0;
-  get('node-list').replaceChildren(...board.nodes.map((node) => {
+  const accounts = new Map(board.nodes.filter(nodeIsAccount).map((node) => [node.id, { node, incoming: [], outgoing: [] }]));
+  const linkedAccounts = new Map();
+  for (const { from, to } of board.transfers) {
+    const accountId = accounts.has(from) ? from : to;
+    const nodeId = accountId === from ? to : from;
+    if (!accounts.has(accountId) || accounts.has(nodeId)) continue;
+    if (!linkedAccounts.has(nodeId)) linkedAccounts.set(nodeId, new Set());
+    linkedAccounts.get(nodeId).add(accountId);
+  }
+  const shared = [];
+  const unassigned = [];
+  for (const node of board.nodes) {
+    if (nodeIsAccount(node)) continue;
+    const linked = linkedAccounts.get(node.id);
+    if (linked?.size === 1) {
+      const account = accounts.get([...linked][0]);
+      const direction = signedFlow(node) < 0 || (signedFlow(node) === 0 && node.type === 'expense') ? 'outgoing' : 'incoming';
+      account[direction].push(node);
+    } else {
+      (linked?.size > 1 ? shared : unassigned).push(node);
+    }
+  }
+
+  function makeItem(node, label = node.name) {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'node-list-item';
     item.dataset.id = node.id;
     item.dataset.type = node.type;
-    item.setAttribute('role', 'listitem');
     item.setAttribute('aria-pressed', String(isNodeSelected(node.id)));
-    item.append(createText('list-name', node.name), createText('list-value', nodeIsAccount(node) ? money(results.get(node.id).balance) : money(Math.abs(signedFlow(node)))));
+    if (label !== node.name) item.setAttribute('aria-label', label + ': ' + node.name);
+    const result = results.get(node.id);
+    item.append(createText('list-name', label), createText('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
     item.addEventListener('click', () => {
       select('node', node.id);
       const size = nodeSize(node);
       camera.x = viewport.clientWidth / 2 - (node.x + size.width / 2) * camera.zoom;
       camera.y = viewport.clientHeight / 2 - (node.y + size.height / 2) * camera.zoom;
       applyCamera();
-      if (mobilePanels.matches) updatePanels();
+      if (mobilePanels.matches) {
+        updatePanels();
+        viewport.focus({ preventScroll: true });
+      } else {
+        list.querySelector('[data-id="' + CSS.escape(node.id) + '"]')?.focus({ preventScroll: true });
+      }
     });
     return item;
-  }));
+  }
+
+  function makeGroup(key, title, items) {
+    const section = document.createElement('details');
+    section.dataset.group = key;
+    section.className = 'node-list-group';
+    section.open = !collapsed.has(key);
+    const summary = document.createElement('summary');
+    summary.textContent = title;
+    const contents = document.createElement('div');
+    contents.className = 'node-list-group-items';
+    contents.append(...items);
+    section.append(summary, contents);
+    return section;
+  }
+
+  const groups = [...accounts.values()].map(({ node, incoming, outgoing }) => {
+    const items = [makeItem(node, 'Vai al conto')];
+    for (const [label, flows] of [['Entrate', incoming], ['Uscite', outgoing]]) {
+      if (flows.length) items.push(createText('node-list-category', label), ...flows.map((flow) => makeItem(flow)));
+    }
+    return makeGroup('account-' + node.id, node.name, items);
+  });
+  if (shared.length) groups.push(makeGroup('shared', 'Collegati a più conti', shared.map((node) => makeItem(node))));
+  if (unassigned.length) groups.push(makeGroup('unassigned', 'Senza conto', unassigned.map((node) => makeItem(node))));
+  get('node-list-empty').hidden = board.nodes.length > 0;
+  list.replaceChildren(...groups);
 }
 
 function drawProjection(periods, monthNumber) {

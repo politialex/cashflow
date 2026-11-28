@@ -79,7 +79,11 @@ h3 { font-size: .76rem; }
 .empty-copy { color: var(--muted); font-size: .76rem; line-height: 1.5; }
 .panel-tip { margin-top: 18px; padding: 10px; color: var(--muted); background: #141414; border: 1px solid var(--border); border-radius: 4px; font-size: .67rem; line-height: 1.5; }
 .panel-tip strong { display: block; margin-bottom: 4px; color: var(--text); }
-.node-list { display: grid; gap: 4px; }
+.node-list { display: grid; gap: 8px; }
+.node-list-group { border: 1px solid var(--border); border-radius: 4px; }
+.node-list-group summary { padding: 10px 8px; color: var(--text); font-size: .73rem; font-weight: 650; cursor: pointer; overflow-wrap: anywhere; }
+.node-list-group-items { display: grid; gap: 4px; padding: 0 4px 4px; }
+.node-list-category { padding: 4px 8px 0; color: var(--muted); font-size: .65rem; }
 .node-list-item { --item-color: #999; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 8px 6px 11px; text-align: left; background: transparent; border-color: transparent; box-shadow: 2px 0 0 var(--item-color) inset; transition: background .14s ease, border-color .14s ease, box-shadow .14s ease; }
 [data-type="bank"] { --type-color: #70a1ff; }
 [data-type="deposit"] { --type-color: #7bed9f; }
