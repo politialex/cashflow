@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=node-link-gesture">
-  <script src="./public/app.js?v=node-link-gesture" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=scenario-tab-actions">
+  <script src="./public/app.js?v=scenario-tab-actions" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -36,10 +36,20 @@
       </div>
     </div>
     <div class="scenario-bar" aria-label="Gestione scenari">
-      <div id="scenario-tabs" role="tablist" aria-label="Scenari"></div>
-      <button id="scenario-create" type="button" aria-haspopup="dialog" aria-controls="scenario-editor">Nuovo</button>
-      <button id="scenario-options" type="button" popovertarget="scenario-actions">Azioni</button>
-      <button id="load-example" type="button">Scenario demo</button>
+      <div class="scenario-strip">
+        <div id="scenario-tabs" role="tablist" aria-label="Scenari"></div>
+        <button id="scenario-options" type="button" popovertarget="scenario-actions" aria-label="Azioni scenario" hidden>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <path d="m4 12.5 9-9 3.5 3.5-9 9L3 17zM11.5 5l3.5 3.5"></path>
+          </svg>
+        </button>
+        <form id="scenario-inline-form" hidden>
+          <input id="scenario-inline-name" aria-label="Nome dello scenario" maxlength="60" required>
+          <button type="submit" aria-label="Salva nome">✓</button>
+          <button id="scenario-inline-cancel" type="button" aria-label="Annulla rinomina">×</button>
+        </form>
+      </div>
+      <button id="scenario-create" type="button" aria-label="Nuovo scenario" title="Nuovo scenario" aria-haspopup="dialog" aria-controls="scenario-editor">+</button>
     </div>
   </header>
 
@@ -81,10 +91,10 @@
     </section>
   </main>
 
-  <div id="scenario-actions" popover="auto" aria-label="Azioni per lo scenario">
-    <button id="scenario-rename" type="button">Rinomina</button>
-    <button id="scenario-copy" type="button">Duplica</button>
+  <div id="scenario-actions" popover="auto" role="group" aria-label="Azioni per lo scenario">
     <button id="scenario-delete" class="danger-button" type="button">Elimina</button>
+    <button id="scenario-copy" type="button">Duplica</button>
+    <button id="scenario-rename" type="button">Rinomina</button>
   </div>
 
   <dialog id="scenario-editor" class="small-dialog" aria-labelledby="scenario-editor-title">
@@ -93,7 +103,10 @@
       <div class="field"><label for="scenario-name">Nome</label><input id="scenario-name" name="name" maxlength="60" required></div>
       <div id="scenario-links-field" hidden><label><input id="scenario-keep-links" type="checkbox" checked> Mantieni i collegamenti</label></div>
       <p id="scenario-error" class="field-help" role="alert"></p>
-      <div class="editor-actions"><button class="primary-button" type="submit" id="scenario-save">Continua</button></div>
+      <div class="editor-actions">
+        <button class="primary-button" type="submit" id="scenario-save">Continua</button>
+        <button id="scenario-demo-create" type="button">Crea demo</button>
+      </div>
     </form>
   </dialog>
 

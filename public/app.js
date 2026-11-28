@@ -198,7 +198,7 @@ function validateSavedBoard(value) {
   return { ...value, nodes: value.nodes.map((node) => ({ ...node, ...boundPosition(node.type, node.x, node.y) })) };
 }
 
-const boardStorage = await openBoardStorage(validateSavedBoard);
+const boardStorage = await openBoardStorage(validateSavedBoard, makeDemoBoard);
 if (boardStorage.board) board = boardStorage.board;
 get('storage-state').textContent = boardStorage.readError ? 'Verifica il backup' : 'Salvato nel browser';
 if (boardStorage.readError) {
@@ -1424,27 +1424,95 @@ document.addEventListener('pointerdown', dismissOutside, true);
 document.addEventListener('click', dismissOutside, true);
 
 const scenarioTabs = get('scenario-tabs');
+const scenarioStrip = scenarioTabs.parentElement;
+const scenarioOptions = get('scenario-options');
+const scenarioActions = get('scenario-actions');
 const scenarioEditor = get('scenario-editor');
+const scenarioRenameForm = get('scenario-inline-form');
+const scenarioRenameName = get('scenario-inline-name');
+let renamingScenario = null;
+let pendingActivation;
+
+function positionScenarioActions() {
+  if (!scenarioActions.matches(':popover-open')) return;
+  const anchor = scenarioOptions.getBoundingClientRect();
+  const strip = scenarioStrip.getBoundingClientRect();
+  if (anchor.right <= strip.left || anchor.left >= strip.right) {
+    scenarioActions.hidePopover();
+    return;
+  }
+  placePopover(scenarioActions, anchor);
+}
+
+function positionScenarioControls() {
+  const tab = scenarioTabs.querySelector('[aria-selected="true"]');
+  const left = tab.offsetLeft;
+  const width = tab.offsetWidth;
+  const gap = 3;
+  scenarioOptions.style.left = (left + width - scenarioOptions.offsetWidth - gap) + 'px';
+  scenarioRenameForm.style.left = left + 'px';
+  scenarioRenameForm.style.width = width + 'px';
+  positionScenarioActions();
+}
 
 function renderScenarioTabs(focus = false) {
   const { scenarios, activeId } = boardStorage.archive;
-  scenarioTabs.replaceChildren(...scenarios.map(({ id, name }) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.id = 'scenario-tab-' + id;
-    button.dataset.scenarioId = id;
-    button.setAttribute('role', 'tab');
-    button.setAttribute('aria-controls', 'scenario-panel');
+  const existingTabs = new Map([...scenarioTabs.children].map((tab) => [tab.dataset.scenarioId, tab]));
+  for (const { id, name } of scenarios) {
+    let button = existingTabs.get(id);
+    existingTabs.delete(id);
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.id = 'scenario-tab-' + id;
+      button.dataset.scenarioId = id;
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-controls', 'scenario-panel');
+      scenarioTabs.append(button);
+    }
     button.setAttribute('aria-selected', String(id === activeId));
     button.tabIndex = id === activeId ? 0 : -1;
-    button.textContent = name;
-    return button;
-  }));
+    if (button.textContent !== name) button.textContent = name;
+  }
+  for (const obsoleteTab of existingTabs.values()) obsoleteTab.remove();
   const active = get('scenario-tab-' + activeId);
+  scenarioOptions.hidden = false;
+  const optionsLabel = 'Azioni per ' + active.textContent;
+  scenarioOptions.setAttribute('aria-label', optionsLabel);
+  scenarioOptions.title = optionsLabel;
   get('scenario-panel').setAttribute('aria-labelledby', active.id);
   get('scenario-delete').disabled = scenarios.length <= 1;
+  positionScenarioControls();
   if (focus) active.focus({ preventScroll: true });
   active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function endScenarioRename(restoreFocus = false) {
+  if (!renamingScenario) return;
+  const { tab, trigger } = renamingScenario;
+  renamingScenario = null;
+  scenarioRenameForm.hidden = true;
+  scenarioOptions.hidden = false;
+  tab.classList.remove('is-renaming');
+  tab.tabIndex = 0;
+  positionScenarioControls();
+  if (restoreFocus) trigger.focus({ preventScroll: true });
+}
+
+function startScenarioRename(tab, trigger = tab) {
+  if (scenarioChanging || renamingScenario) return;
+  scenarioActions.hidePopover();
+  renamingScenario = { tab, trigger };
+  tab.classList.add('is-renaming');
+  tab.tabIndex = -1;
+  scenarioOptions.hidden = true;
+  scenarioRenameName.setCustomValidity('');
+  scenarioRenameName.value = tab.textContent;
+  scenarioRenameForm.hidden = false;
+  positionScenarioControls();
+  tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  scenarioRenameName.focus({ preventScroll: true });
+  scenarioRenameName.select();
 }
 
 async function changeScenario(operation, replaceBoard = true) {
@@ -1453,6 +1521,7 @@ async function changeScenario(operation, replaceBoard = true) {
   scenarioTabs.setAttribute('aria-busy', 'true');
   try {
     await operation();
+    endScenarioRename();
     if (replaceBoard) {
       board = boardStorage.board;
       history = [];
@@ -1480,12 +1549,24 @@ async function changeScenario(operation, replaceBoard = true) {
 }
 
 function activateScenario(id) {
-  if (id !== boardStorage.archive.activeId) void changeScenario(() => boardStorage.activateScenario(id));
+  if (id === boardStorage.archive.activeId) return Promise.resolve(true);
+  if (pendingActivation?.id === id) return pendingActivation.result;
+  if (scenarioChanging) return Promise.resolve(false);
+  endScenarioRename();
+  scenarioActions.hidePopover();
+  const result = changeScenario(() => boardStorage.activateScenario(id));
+  pendingActivation = { id, result };
+  void result.then(() => { pendingActivation = null; });
+  return result;
 }
 
 scenarioTabs.addEventListener('click', (event) => {
   const tab = event.target.closest('[data-scenario-id]');
-  if (tab) activateScenario(tab.dataset.scenarioId);
+  if (tab) void activateScenario(tab.dataset.scenarioId);
+});
+scenarioTabs.addEventListener('dblclick', async (event) => {
+  const tab = event.target.closest('[data-scenario-id]');
+  if (tab && await activateScenario(tab.dataset.scenarioId)) startScenarioRename(tab);
 });
 
 scenarioTabs.addEventListener('keydown', (event) => {
@@ -1496,20 +1577,26 @@ scenarioTabs.addEventListener('keydown', (event) => {
   const index = tabs.indexOf(tab);
   const targetIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
     : (index + (event.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
-  activateScenario(tabs[targetIndex].dataset.scenarioId);
+  void activateScenario(tabs[targetIndex].dataset.scenarioId);
 });
+
+scenarioActions.addEventListener('toggle', positionScenarioActions);
+scenarioStrip.addEventListener('scroll', positionScenarioActions);
+window.addEventListener('resize', positionScenarioControls);
 
 function openScenarioEditor(action) {
   const { activeId, scenarios } = boardStorage.archive;
   const active = scenarios.find(({ id }) => id === activeId);
   scenarioAction = action;
-  get('scenario-actions').hidePopover();
-  get('scenario-editor-title').textContent = { create: 'Nuovo scenario', rename: 'Rinomina scenario', copy: 'Duplica scenario' }[action];
+  endScenarioRename();
+  scenarioActions.hidePopover();
+  get('scenario-editor-title').textContent = action === 'copy' ? 'Duplica scenario' : 'Nuovo scenario';
   get('scenario-error').textContent = '';
   get('scenario-links-field').hidden = action !== 'copy';
+  get('scenario-demo-create').hidden = action !== 'create';
   get('scenario-keep-links').checked = true;
   const name = get('scenario-name');
-  name.value = action === 'create' ? '' : action === 'copy' ? (active.name + ' (copia)').slice(0, 60) : active.name;
+  name.value = action === 'copy' ? (active.name + ' (copia)').slice(0, 60) : '';
   scenarioEditor.showModal();
   name.focus();
   name.select();
@@ -1527,9 +1614,29 @@ function duplicateBoard(keepLinks) {
 }
 
 get('scenario-create').addEventListener('click', () => openScenarioEditor('create'));
-get('scenario-rename').addEventListener('click', () => openScenarioEditor('rename'));
+get('scenario-rename').addEventListener('click', () => startScenarioRename(scenarioTabs.querySelector('[aria-selected="true"]'), scenarioOptions));
 get('scenario-copy').addEventListener('click', () => openScenarioEditor('copy'));
 get('scenario-cancel').addEventListener('click', () => scenarioEditor.close());
+get('scenario-inline-cancel').addEventListener('click', () => endScenarioRename(true));
+scenarioRenameName.addEventListener('input', () => scenarioRenameName.setCustomValidity(''));
+scenarioRenameForm.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || scenarioChanging) return;
+  event.preventDefault();
+  event.stopPropagation();
+  endScenarioRename(true);
+});
+scenarioRenameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = scenarioRenameName.value.trim();
+  if (!name) {
+    scenarioRenameName.setCustomValidity('Inserisci il nome dello scenario.');
+    scenarioRenameName.reportValidity();
+    return;
+  }
+  const id = renamingScenario.tab.dataset.scenarioId;
+  const renamed = await changeScenario(() => boardStorage.renameScenario(id, name), false);
+  if (!renamed) scenarioRenameName.focus({ preventScroll: true });
+});
 scenarioEditor.addEventListener('cancel', (event) => {
   if (scenarioChanging) event.preventDefault();
 });
@@ -1542,17 +1649,14 @@ get('scenario-form').addEventListener('submit', async (event) => {
   }
   const save = get('scenario-save');
   save.disabled = true;
-  if (scenarioAction === 'rename') {
-    await changeScenario(() => boardStorage.renameScenario(boardStorage.archive.activeId, name), false);
-  } else {
-    const initial = scenarioAction === 'copy' ? duplicateBoard(get('scenario-keep-links').checked) : undefined;
-    await changeScenario(() => boardStorage.createScenario(name, initial));
-  }
+  const initial = scenarioAction === 'copy' ? duplicateBoard(get('scenario-keep-links').checked) : undefined;
+  await changeScenario(() => boardStorage.createScenario(name, initial));
   save.disabled = false;
 });
 
 get('scenario-delete').addEventListener('click', () => {
-  get('scenario-actions').hidePopover();
+  scenarioActions.hidePopover();
+  scenarioOptions.focus({ preventScroll: true });
   const { activeId, scenarios } = boardStorage.archive;
   const active = scenarios.find(({ id }) => id === activeId);
   if (confirm('Eliminare lo scenario «' + active.name + '»?')) {
@@ -1560,12 +1664,11 @@ get('scenario-delete').addEventListener('click', () => {
   }
 });
 
-get('load-example').addEventListener('click', () => {
-  const demo = boardStorage.archive.scenarios.find(({ name }) => name === 'Scenario demo');
-  if (demo) {
-    activateScenario(demo.id);
-    return;
-  }
+get('scenario-demo-create').addEventListener('click', () => {
+  void changeScenario(() => boardStorage.createScenario('Demo', makeDemoBoard()));
+});
+
+function makeDemoBoard() {
   const salary = applySignedFlow(makeNode('source', 160, 520), 240_000);
   salary.name = 'Stipendio';
   const bank = makeNode('bank', 520, 480);
@@ -1582,8 +1685,8 @@ get('load-example').addEventListener('click', () => {
     { ...makeTransfer(bank, deposit), amountCents: 60_000 },
     { ...makeTransfer(bank, investment), amountCents: 30_000 },
   ];
-  void changeScenario(() => boardStorage.createScenario('Scenario demo', { nodes: [salary, bank, bills, deposit, investment], transfers }));
-});
+  return { nodes: [salary, bank, bills, deposit, investment], transfers };
+}
 
 get('open-simulation').addEventListener('click', () => simulation.showModal());
 get('close-simulation').addEventListener('click', () => simulation.close());
