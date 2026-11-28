@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=node-link-gesture">
-  <script src="./public/app.js?v=node-link-gesture" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=layout-feedback">
+  <script src="./public/app.js?v=layout-feedback" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -17,9 +17,7 @@
     </a>
     <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> <span id="storage-state" role="status">Caricamento…</span></span></div>
     <div class="header-actions">
-      <button id="toggle-privacy" type="button" aria-pressed="false">Privacy</button>
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
-      <button id="open-backup" type="button" aria-haspopup="dialog" aria-controls="backup">Backup</button>
       <button id="toggle-theme" type="button" popovertarget="theme-picker" aria-label="Tema: Scuro" title="Tema: Scuro">
         <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
           <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
@@ -36,10 +34,20 @@
       </div>
     </div>
     <div class="scenario-bar" aria-label="Gestione scenari">
-      <div id="scenario-tabs" role="tablist" aria-label="Scenari"></div>
-      <button id="scenario-create" type="button" aria-haspopup="dialog" aria-controls="scenario-editor">Nuovo</button>
-      <button id="scenario-options" type="button" popovertarget="scenario-actions">Azioni</button>
-      <button id="load-example" type="button">Scenario demo</button>
+      <div class="scenario-strip">
+        <div id="scenario-tabs" role="tablist" aria-label="Scenari"></div>
+        <button id="scenario-options" type="button" popovertarget="scenario-actions" aria-label="Azioni scenario" hidden>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <path d="m4 12.5 9-9 3.5 3.5-9 9L3 17zM11.5 5l3.5 3.5"></path>
+          </svg>
+        </button>
+        <form id="scenario-inline-form" hidden>
+          <input id="scenario-inline-name" aria-label="Nome dello scenario" maxlength="60" required>
+          <button type="submit" aria-label="Salva nome">✓</button>
+          <button id="scenario-inline-cancel" type="button" aria-label="Annulla rinomina">×</button>
+        </form>
+      </div>
+      <button id="scenario-create" type="button" aria-label="Nuovo scenario" title="Nuovo scenario" aria-haspopup="dialog" aria-controls="scenario-editor">+</button>
     </div>
   </header>
 
@@ -62,29 +70,49 @@
             <div id="board-nodes" role="group" aria-label="Nodi"></div>
           </div>
           <div id="board-selection-box" class="selection-box" aria-hidden="true" hidden></div>
-          <div id="board-empty" class="board-empty"><span aria-hidden="true">＋</span><strong>Costruisci il tuo flusso</strong><p>Doppio click qui oppure usa il pulsante in basso.</p></div>
+          <div id="board-empty" class="board-empty"><span aria-hidden="true">＋</span><strong>Costruisci il tuo flusso</strong><p>Doppio click qui oppure usa Aggiungi.</p></div>
         </div>
         <p id="board-status" role="status" aria-live="polite"></p>
         <div class="zoom-controls" role="group" aria-label="Navigazione della board">
           <button id="zoom-in" type="button" aria-label="Aumenta zoom">+</button>
           <button id="zoom-out" type="button" aria-label="Riduci zoom">−</button>
           <button id="fit-view" type="button" aria-label="Adatta la vista a tutti i nodi">Adatta</button>
+          <button id="toggle-fullscreen" type="button" aria-label="Schermo intero" aria-pressed="false" title="Attiva schermo intero">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path class="fullscreen-enter" d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"></path>
+              <path class="fullscreen-exit" d="M4 9h5V4m11 5h-5V4M9 20v-5H4m11 5v-5h5"></path>
+            </svg>
+          </button>
           <output id="zoom-level" aria-label="Livello di zoom">100%</output>
         </div>
-        <div class="board-tools">
-          <button id="add-node" class="primary-button" type="button" aria-haspopup="dialog" aria-controls="new-node-dialog"><span class="tool-icon" aria-hidden="true">＋</span>Aggiungi</button>
-          <button id="add-transfer" type="button" aria-pressed="false"><span class="tool-icon" aria-hidden="true">→</span>Collega</button>
-          <button id="open-simulation" type="button" aria-haspopup="dialog" aria-controls="simulation"><span class="tool-icon" aria-hidden="true">▶</span>Simula</button>
+        <div class="board-tools" role="group" aria-label="Azioni della board">
+          <button id="add-node" class="primary-button" type="button" aria-label="Aggiungi" aria-haspopup="dialog" aria-controls="new-node-dialog">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button id="add-transfer" type="button" aria-label="Collega" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h16m-6-6 6 6-6 6"/></svg>
+          </button>
+          <button id="open-currency" type="button" aria-label="Valuta di visualizzazione: EUR"><span data-currency-code aria-hidden="true">EUR</span></button>
+          <button id="toggle-privacy" type="button" aria-label="Nascondi importi" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/><path class="privacy-slash" d="m4 4 16 16"/></svg>
+          </button>
+          <button id="open-table" type="button" aria-label="Vista tabella">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="14" rx="1"/><path d="M4 10h16M4 14.5h16M10 10v9"/></svg>
+          </button>
+          <button id="open-backup" type="button" aria-label="Download e ripristino backup" aria-haspopup="dialog" aria-controls="backup">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11m-4-4 4 4 4-4M5 17v3h14v-3"/></svg>
+          </button>
         </div>
+        <button id="open-simulation" class="simulation-control" type="button" aria-haspopup="dialog" aria-controls="simulation"><span class="tool-icon" aria-hidden="true">▶</span>Simula</button>
       </div>
 
     </section>
   </main>
 
-  <div id="scenario-actions" popover="auto" aria-label="Azioni per lo scenario">
-    <button id="scenario-rename" type="button">Rinomina</button>
-    <button id="scenario-copy" type="button">Duplica</button>
+  <div id="scenario-actions" popover="auto" role="group" aria-label="Azioni per lo scenario">
     <button id="scenario-delete" class="danger-button" type="button">Elimina</button>
+    <button id="scenario-copy" type="button">Duplica</button>
+    <button id="scenario-rename" type="button">Rinomina</button>
   </div>
 
   <dialog id="scenario-editor" class="small-dialog" aria-labelledby="scenario-editor-title">
@@ -93,7 +121,10 @@
       <div class="field"><label for="scenario-name">Nome</label><input id="scenario-name" name="name" maxlength="60" required></div>
       <div id="scenario-links-field" hidden><label><input id="scenario-keep-links" type="checkbox" checked> Mantieni i collegamenti</label></div>
       <p id="scenario-error" class="field-help" role="alert"></p>
-      <div class="editor-actions"><button class="primary-button" type="submit" id="scenario-save">Continua</button></div>
+      <div class="editor-actions">
+        <button class="primary-button" type="submit" id="scenario-save">Continua</button>
+        <button id="scenario-demo-create" type="button">Crea demo</button>
+      </div>
     </form>
   </dialog>
 
@@ -157,6 +188,7 @@
       <button id="close-backup" type="button" aria-label="Chiudi backup">×</button>
     </div>
     <div class="editor">
+      <p id="backup-privacy-warning" class="field-help" hidden>La privacy è attiva. Il backup JSON contiene comunque gli importi in chiaro.</p>
       <div class="editor-actions"><button id="export-backup" type="button">Scarica backup JSON</button></div>
       <div class="field">
         <label for="backup-file">Scegli un file di backup JSON</label>
@@ -168,12 +200,27 @@
     </div>
   </dialog>
 
+  <dialog id="currency-view" class="small-dialog" aria-labelledby="currency-heading">
+    <form id="currency-form" class="editor">
+      <div class="dialog-heading"><h2 id="currency-heading">Valuta di visualizzazione</h2><button id="close-currency" type="button" aria-label="Chiudi">×</button></div>
+      <p class="field-help">La conversione è indicativa. Dati, calcoli, campi di modifica e backup restano in EUR.</p>
+      <div class="field"><label for="display-currency">Valuta</label><select id="display-currency"><option value="EUR">EUR · Euro</option><option value="USD">USD · Dollaro USA</option><option value="GBP">GBP · Sterlina</option></select></div>
+      <div id="currency-rate-field" class="field" hidden><label id="currency-rate-label" for="currency-rate">Tasso fisso</label><input id="currency-rate" data-private-input inputmode="decimal"></div>
+      <p id="currency-error" class="field-help" role="alert"></p>
+      <div class="editor-actions"><button class="primary-button" type="submit">Applica</button></div>
+    </form>
+  </dialog>
+
   <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">
     <div class="dialog-heading"><div><span class="eyebrow">Proiezione</span><h2 id="simulation-heading">Simulazione</h2></div><button id="close-simulation" type="button" aria-label="Chiudi">×</button></div>
     <form id="simulation-form" class="simulation-form"><div class="field"><label for="projection-start">Mese iniziale</label><input id="projection-start" name="startMonth" type="month" required></div><div class="field"><label for="projection-length">Orizzonte in mesi</label><input id="projection-length" name="months" type="number" min="1" max="120" value="12" required></div><button class="primary-button" type="submit">Calcola</button></form>
     <div class="projection-header"><p id="simulation-status" role="status"></p><div class="field"><label for="projection-month">Periodo</label><select id="projection-month" disabled></select></div></div>
     <div class="table-scroll" role="region" aria-label="Risultati" tabindex="0"><table><thead><tr><th scope="col">Elemento</th><th scope="col">Inizio</th><th scope="col">Entrate</th><th scope="col">Uscite</th><th scope="col">Rendimento</th><th scope="col">Disponibilità</th></tr></thead><tbody id="projection-rows"></tbody></table></div>
-    <details id="projection-event-details" class="summary"><summary>Movimenti del periodo</summary><ol id="projection-events"></ol></details>
+    <details id="projection-event-details" class="summary"><summary>Movimenti del periodo</summary>
+      <div class="table-scroll" role="region" aria-label="Movimenti in ordine di applicazione" tabindex="0">
+        <table><thead><tr><th scope="col">Data</th><th scope="col">Origine</th><th scope="col">Destinazione</th><th scope="col">Cadenza</th><th scope="col">Importo</th></tr></thead><tbody id="projection-movement-rows"></tbody></table>
+      </div>
+    </details>
   </dialog>
 </body>
 </html>

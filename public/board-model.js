@@ -85,7 +85,7 @@ function transferOccurs(frequency, month) {
     || (frequency === 'once' && month === 1);
 }
 
-function transfersInFlowOrder(nodes, transfers) {
+export function flowOrder({ nodes, transfers }) {
   const incoming = new Map(nodes.map(({ id }) => [id, 0]));
   const outgoing = new Map(nodes.map(({ id }) => [id, []]));
   for (const transfer of transfers) {
@@ -109,6 +109,11 @@ function transfersInFlowOrder(nodes, transfers) {
     if (!rank.has(id)) rank.set(id, rank.size);
   }
 
+  return rank;
+}
+
+function transfersInFlowOrder(nodes, transfers) {
+  const rank = flowOrder({ nodes, transfers });
   return transfers.map((transfer, index) => ({ transfer, index }))
     .sort((left, right) => rank.get(left.transfer.from) - rank.get(right.transfer.from) || left.index - right.index)
     .map(({ transfer }) => transfer);

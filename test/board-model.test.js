@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { simulateBoard } from '../public/board-model.js';
+import { flowOrder, simulateBoard } from '../public/board-model.js';
 
 function node(id, overrides = {}) {
   return {
@@ -215,4 +215,16 @@ test('runs one-time and interval rules on anchored dates and rejects impossible 
   }), 6, '2027-01');
   assert.deepEqual(interval.map(({ nodes }) => nodes[0].outflow), [500, 0, 500, 0, 0, 0]);
   assert.throws(() => simulateBoard(makeBoard({ frequency: 'once', startDate: '2027-02-29' }), 1), /Giorno/);
+});
+
+test('orders table nodes by graph relationships regardless of their board coordinates', () => {
+  const board = {
+    nodes: [node('expense', { x: 100 }), node('account', { x: 20 }), node('income', { x: 800 })],
+    transfers: [transfer('out', 'account', 'expense'), transfer('in', 'income', 'account')],
+  };
+  assert.deepEqual([...flowOrder(board).keys()], ['income', 'account', 'expense']);
+  const [period] = simulateBoard(board, 1, '2027-01');
+  assert.deepEqual(period.timeline.map(({ id }) => id), ['in', 'out']);
+  board.transfers.push(transfer('cycle', 'expense', 'account'));
+  assert.deepEqual([...flowOrder(board).keys()], [...flowOrder(structuredClone(board)).keys()]);
 });
