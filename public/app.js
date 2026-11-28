@@ -116,6 +116,10 @@ const privacyButton = get('toggle-privacy');
 
 function applyPrivacyMode() {
   privacyButton.setAttribute('aria-pressed', String(privacyMode));
+  document.documentElement.classList.toggle('privacy-active', privacyMode);
+  get('backup-privacy-warning').hidden = !privacyMode;
+  if (privacyMode) get('export-backup').setAttribute('aria-describedby', 'backup-privacy-warning');
+  else get('export-backup').removeAttribute('aria-describedby');
   document.querySelectorAll('[data-private-amount]').forEach((element) => {
     element.textContent = privacyMode ? '••••' : displayedAmounts.get(element);
   });

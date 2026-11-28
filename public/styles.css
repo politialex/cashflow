@@ -138,6 +138,7 @@ button:disabled { opacity: .45; cursor: default; }
 #theme-picker label:has(:checked) { background: var(--raised); }
 #theme-picker input { width: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: var(--accent); }
 #theme-picker input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#backup-privacy-warning { color: var(--text); }
 #toggle-privacy[aria-pressed="true"] { border-color: var(--accent); color: var(--text); background: var(--raised); box-shadow: inset 0 -2px var(--accent); }
 
 .scenario-bar { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; }
@@ -151,7 +152,7 @@ button:disabled { opacity: .45; cursor: default; }
 #scenario-links-field input { width: auto; min-height: auto; }
 
 main, .workspace, .board-surface { min-width: 0; min-height: 0; }
-.workspace { position: relative; display: grid; grid-template-columns: 220px minmax(0, 1fr); width: 100%; height: 100%; }
+.workspace { --actions-size: 44px; --actions-inset: max(8px, env(safe-area-inset-left)); position: relative; display: grid; grid-template-columns: 220px minmax(0, 1fr); width: 100%; height: 100%; }
 .workspace.nodes-panel-closed { grid-template-columns: minmax(0, 1fr); }
 .nodes-panel {
   position: relative;
@@ -262,8 +263,80 @@ h3 { font-size: .76rem; }
 #board-status { position: absolute; z-index: 5; top: 12px; left: 50%; max-width: min(440px, calc(100% - 30px)); color: var(--text); font-size: .72rem; font-weight: 650; transform: translateX(-50%); pointer-events: none; }
 #board-status:not(:empty) { padding: 7px 10px; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 4px; box-shadow: 0 5px 18px #0007; }
 
-.board-tools { position: absolute; z-index: 5; bottom: 18px; left: 50%; display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 4px; box-shadow: 0 10px 28px #000a; transform: translateX(-50%); backdrop-filter: blur(14px); }
-.board-tools button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 7px 13px; font-size: .72rem; font-weight: 710; }
+.board-tools {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  left: var(--actions-inset);
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px #0008;
+  transform: translateY(-50%);
+}
+.board-tools button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--actions-size);
+  min-height: var(--actions-size);
+  padding: 0;
+  font-size: .68rem;
+  font-weight: 700;
+}
+.board-tools button:not(:disabled):is(:hover, :focus-visible)::after {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  z-index: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--panel);
+  content: attr(aria-label);
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.board-tools svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+.board-tools .privacy-slash { display: none; }
+#toggle-privacy[aria-pressed="true"] .privacy-slash { display: block; }
+.privacy-active [data-private-amount] { filter: blur(1.5px); }
+.privacy-active .private-amount-placeholder::before {
+  display: inline-block;
+  margin-inline-end: 6px;
+  content: "••••" / "";
+  filter: blur(1.5px);
+}
+.simulation-control {
+  position: absolute;
+  z-index: 5;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 8px 24px #0008;
+  transform: translateX(-50%);
+}
+.simulation-control:active:not(:disabled) { transform: translate(-50%, 1px); }
 .primary-button { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 650; }
 .primary-button:hover { color: var(--accent-ink); background: var(--accent-hover); border-color: var(--accent-hover); }
 .tool-icon { font-size: .94rem; line-height: 1; }
@@ -352,16 +425,21 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
   .workspace { --navigation-inset: max(8px, env(safe-area-inset-right)); }
   .workspace { grid-template-columns: minmax(0, 1fr); }
   .document-title { display: none; }
-  .nodes-panel { position: absolute; z-index: 8; top: 8px; bottom: 76px; width: min(310px, calc(100% - var(--navigation-inset) - 70px)); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 16px 40px #000c; }
-  .nodes-panel { left: 8px; }
+  .nodes-panel { position: absolute; z-index: 8; top: 8px; bottom: 72px; left: calc(var(--actions-inset) + var(--actions-size) + 18px); width: min(248px, calc(100% - var(--actions-inset) - var(--actions-size) - var(--navigation-inset) - 78px)); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 16px 40px #000c; }
   .zoom-controls { right: var(--navigation-inset); }
 }
 @media (max-width: 560px) {
   body { grid-template-rows: auto minmax(0, 1fr); }
   .site-header { gap: 8px; padding: 6px 8px; }.brand { font-size: .9rem; }.brand-mark { width: 30px; height: 30px; }.header-actions { gap: 4px; }.header-actions button { padding-inline: 7px; font-size: .68rem; }
-  .board-tools { bottom: max(10px, env(safe-area-inset-bottom)); gap: 4px; padding: 5px; }.board-tools button { padding-inline: 8px; font-size: .67rem; }.tool-divider { display: none; }
-  .zoom-controls { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 62px); }
+  .board-empty { width: min(260px, calc(100% - 144px)); }
+  .zoom-controls { bottom: max(16px, env(safe-area-inset-bottom)); }
   .account-node { width: 220px; }.node-type-grid { grid-template-columns: 1fr; }.small-dialog { max-height: calc(100dvh - 24px); overflow: auto; }
+}
+
+@media (max-height: 480px) {
+  .workspace { --actions-size: 30px; }
+  .board-tools { gap: 2px; }
+  .zoom-controls button { min-height: 32px; }
 }
 
 @media (max-width: 380px) {
