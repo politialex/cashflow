@@ -254,3 +254,7 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
   .zoom-controls { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 56px); }
   .account-node { width: 220px; }.node-type-grid { grid-template-columns: 1fr; }.small-dialog { max-height: calc(100dvh - 24px); overflow: auto; }
 }
+
+@media (max-width: 380px) {
+  .brand > span:last-child { display: none; }
+}

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=privacy-mode">
-  <script src="./public/app.js?v=privacy-mode" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=board-backup">
+  <script src="./public/app.js?v=board-backup" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -15,11 +15,12 @@
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <span>Cashflow <span>Studio</span></span>
     </a>
-    <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> Salvato nel browser</span></div>
+    <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> <span id="storage-state" role="status">Caricamento…</span></span></div>
     <div class="header-actions">
       <button id="toggle-privacy" type="button" aria-pressed="false">Privacy</button>
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
       <button id="toggle-inspector" type="button" aria-controls="inspector" aria-expanded="false">Dettagli</button>
+      <button id="open-backup" type="button" aria-haspopup="dialog" aria-controls="backup">Backup</button>
     </div>
   </header>
 
@@ -114,6 +115,23 @@
         <button type="submit" name="type" value="expense"><strong>Spesa</strong><span>Ricorrente o una tantum</span></button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="backup" class="small-dialog" aria-labelledby="backup-heading">
+    <div class="dialog-heading">
+      <h2 id="backup-heading">Backup della board</h2>
+      <button id="close-backup" type="button" aria-label="Chiudi backup">×</button>
+    </div>
+    <div class="editor">
+      <div class="editor-actions"><button id="export-backup" type="button">Scarica backup JSON</button></div>
+      <div class="field">
+        <label for="backup-file">Scegli un file di backup JSON</label>
+        <input id="backup-file" type="file" accept=".json,application/json" aria-describedby="backup-help">
+        <p id="backup-help" class="field-help">Il ripristino sostituisce la board corrente. Scarica prima una copia se vuoi conservarla.</p>
+      </div>
+      <div class="editor-actions"><button id="restore-backup" class="primary-button" type="button" disabled>Ripristina board</button></div>
+      <p id="backup-status" class="field-help" role="status"></p>
+    </div>
   </dialog>
 
   <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">
