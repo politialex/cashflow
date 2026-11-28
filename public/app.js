@@ -47,6 +47,8 @@ let saveRevision = 0;
 let backupRead = 0;
 let pendingBackup;
 let restoringBackup = false;
+let scenarioChanging = false;
+let scenarioAction = 'create';
 let privacyMode = false;
 const displayedAmounts = new WeakMap();
 
@@ -199,6 +201,7 @@ function saveCamera() {
 }
 
 function commit(next, nextSelection, message, record = true) {
+  if (scenarioChanging) return false;
   try {
     simulateBoard(next, horizon);
   } catch (error) {
@@ -219,7 +222,7 @@ function commit(next, nextSelection, message, record = true) {
 }
 
 function undo() {
-  if (!history.length) return;
+  if (scenarioChanging || !history.length) return;
   future.push(cloneBoard());
   board = history.pop();
   selected = null;
@@ -229,7 +232,7 @@ function undo() {
 }
 
 function redo() {
-  if (!future.length) return;
+  if (scenarioChanging || !future.length) return;
   history.push(cloneBoard());
   board = future.pop();
   selected = null;
@@ -1241,8 +1244,149 @@ function dismissOutside(event) {
 document.addEventListener('pointerdown', dismissOutside, true);
 document.addEventListener('click', dismissOutside, true);
 
+const scenarioTabs = get('scenario-tabs');
+const scenarioEditor = get('scenario-editor');
+
+function renderScenarioTabs(focus = false) {
+  const { scenarios, activeId } = boardStorage.archive;
+  scenarioTabs.replaceChildren(...scenarios.map(({ id, name }) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'scenario-tab-' + id;
+    button.dataset.scenarioId = id;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', 'scenario-panel');
+    button.setAttribute('aria-selected', String(id === activeId));
+    button.tabIndex = id === activeId ? 0 : -1;
+    button.textContent = name;
+    return button;
+  }));
+  const active = get('scenario-tab-' + activeId);
+  get('scenario-panel').setAttribute('aria-labelledby', active.id);
+  get('scenario-delete').disabled = scenarios.length <= 1;
+  if (focus) active.focus({ preventScroll: true });
+  active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+async function changeScenario(operation, replaceBoard = true) {
+  if (scenarioChanging) return false;
+  scenarioChanging = true;
+  scenarioTabs.setAttribute('aria-busy', 'true');
+  try {
+    await operation();
+    if (replaceBoard) {
+      board = boardStorage.board;
+      history = [];
+      future = [];
+      selected = null;
+      drag = null;
+      connection = null;
+      connectFrom = null;
+      viewport.classList.remove('connect-mode', 'is-panning');
+      selectionBox.hidden = true;
+      render();
+      fitView();
+    }
+    if (scenarioEditor.open) scenarioEditor.close();
+    renderScenarioTabs(true);
+    return true;
+  } catch (error) {
+    if (scenarioEditor.open) get('scenario-error').textContent = error.message;
+    else writeStatus(error.message);
+    return false;
+  } finally {
+    scenarioChanging = false;
+    scenarioTabs.setAttribute('aria-busy', 'false');
+  }
+}
+
+function activateScenario(id) {
+  if (id !== boardStorage.archive.activeId) void changeScenario(() => boardStorage.activateScenario(id));
+}
+
+scenarioTabs.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-scenario-id]');
+  if (tab) activateScenario(tab.dataset.scenarioId);
+});
+
+scenarioTabs.addEventListener('keydown', (event) => {
+  const tab = event.target.closest('[data-scenario-id]');
+  const tabs = [...scenarioTabs.children];
+  if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const index = tabs.indexOf(tab);
+  const targetIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+    : (index + (event.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
+  activateScenario(tabs[targetIndex].dataset.scenarioId);
+});
+
+function openScenarioEditor(action) {
+  const { activeId, scenarios } = boardStorage.archive;
+  const active = scenarios.find(({ id }) => id === activeId);
+  scenarioAction = action;
+  get('scenario-actions').hidePopover();
+  get('scenario-editor-title').textContent = { create: 'Nuovo scenario', rename: 'Rinomina scenario', copy: 'Duplica scenario' }[action];
+  get('scenario-error').textContent = '';
+  get('scenario-links-field').hidden = action !== 'copy';
+  get('scenario-keep-links').checked = true;
+  const name = get('scenario-name');
+  name.value = action === 'create' ? '' : action === 'copy' ? (active.name + ' (copia)').slice(0, 60) : active.name;
+  scenarioEditor.showModal();
+  name.focus();
+  name.select();
+}
+
+function duplicateBoard(keepLinks) {
+  const keyMap = new Map(board.nodes.map((node) => [node.id, id()]));
+  return {
+    ...board,
+    nodes: board.nodes.map((node) => ({ ...node, id: keyMap.get(node.id) })),
+    transfers: keepLinks ? board.transfers.map((transfer) => ({
+      ...transfer, id: id(), from: keyMap.get(transfer.from), to: keyMap.get(transfer.to),
+    })) : [],
+  };
+}
+
+get('scenario-create').addEventListener('click', () => openScenarioEditor('create'));
+get('scenario-rename').addEventListener('click', () => openScenarioEditor('rename'));
+get('scenario-copy').addEventListener('click', () => openScenarioEditor('copy'));
+get('scenario-cancel').addEventListener('click', () => scenarioEditor.close());
+scenarioEditor.addEventListener('cancel', (event) => {
+  if (scenarioChanging) event.preventDefault();
+});
+get('scenario-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = get('scenario-name').value.trim();
+  if (!name) {
+    get('scenario-error').textContent = 'Inserisci il nome dello scenario.';
+    return;
+  }
+  const save = get('scenario-save');
+  save.disabled = true;
+  if (scenarioAction === 'rename') {
+    await changeScenario(() => boardStorage.renameScenario(boardStorage.archive.activeId, name), false);
+  } else {
+    const initial = scenarioAction === 'copy' ? duplicateBoard(get('scenario-keep-links').checked) : undefined;
+    await changeScenario(() => boardStorage.createScenario(name, initial));
+  }
+  save.disabled = false;
+});
+
+get('scenario-delete').addEventListener('click', () => {
+  get('scenario-actions').hidePopover();
+  const { activeId, scenarios } = boardStorage.archive;
+  const active = scenarios.find(({ id }) => id === activeId);
+  if (confirm('Eliminare lo scenario «' + active.name + '»?')) {
+    void changeScenario(() => boardStorage.deleteScenario(activeId));
+  }
+});
+
 get('load-example').addEventListener('click', () => {
-  if (board.nodes.length && !confirm('Sostituire la board attuale con l’esempio?')) return;
+  const demo = boardStorage.archive.scenarios.find(({ name }) => name === 'Scenario demo');
+  if (demo) {
+    activateScenario(demo.id);
+    return;
+  }
   const salary = applySignedFlow(makeNode('source', 160, 520), 240_000);
   salary.name = 'Stipendio';
   const bank = makeNode('bank', 520, 480);
@@ -1259,8 +1403,7 @@ get('load-example').addEventListener('click', () => {
     { ...makeTransfer(bank, deposit), amountCents: 60_000 },
     { ...makeTransfer(bank, investment), amountCents: 30_000 },
   ];
-  commit({ nodes: [salary, bank, bills, deposit, investment], transfers }, { kind: 'node', id: bank.id }, 'Scenario di esempio caricato.');
-  requestAnimationFrame(fitView);
+  void changeScenario(() => boardStorage.createScenario('Scenario demo', { nodes: [salary, bank, bills, deposit, investment], transfers }));
 });
 
 get('open-simulation').addEventListener('click', () => simulation.showModal());
@@ -1273,7 +1416,7 @@ get('simulation-form').addEventListener('submit', (event) => {
 get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon), Number(get('projection-month').value)));
 
 document.addEventListener('keydown', (event) => {
-  if (backupDialog.open || event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
+  if (backupDialog.open || scenarioEditor.open || event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
   if (drag?.kind === 'node' && event.key !== 'Escape') return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();
@@ -1305,3 +1448,4 @@ canvas.style.width = world.width + 'px';
 canvas.style.height = world.height + 'px';
 if (!cameraRestored) centerBoard();
 render();
+renderScenarioTabs();

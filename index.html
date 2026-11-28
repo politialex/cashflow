@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=contextual-editors">
-  <script src="./public/app.js?v=contextual-editors" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=scenario-tabs">
+  <script src="./public/app.js?v=scenario-tabs" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -21,10 +21,16 @@
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
       <button id="open-backup" type="button" aria-haspopup="dialog" aria-controls="backup">Backup</button>
     </div>
+    <div class="scenario-bar" aria-label="Gestione scenari">
+      <div id="scenario-tabs" role="tablist" aria-label="Scenari"></div>
+      <button id="scenario-create" type="button" aria-haspopup="dialog" aria-controls="scenario-editor">Nuovo</button>
+      <button id="scenario-options" type="button" popovertarget="scenario-actions">Azioni</button>
+      <button id="load-example" type="button">Scenario demo</button>
+    </div>
   </header>
 
   <main>
-    <section class="workspace" aria-label="Mappa dei flussi finanziari">
+    <section id="scenario-panel" class="workspace" role="tabpanel" aria-label="Mappa dei flussi finanziari">
       <aside id="nodes-panel" class="nodes-panel" aria-labelledby="nodes-heading" hidden>
         <div class="panel-heading">
           <div><span class="eyebrow">Mappa</span><h1 id="nodes-heading">Elementi</h1></div>
@@ -54,7 +60,6 @@
         <div class="board-tools">
           <button id="add-node" class="primary-button" type="button" aria-haspopup="dialog" aria-controls="new-node-dialog">Aggiungi</button>
           <button id="add-transfer" type="button">Collega</button>
-          <button id="load-example" type="button">Scenario demo</button>
           <span class="tool-divider" aria-hidden="true"></span>
           <button id="open-simulation" type="button" aria-haspopup="dialog" aria-controls="simulation">Simula</button>
         </div>
@@ -62,6 +67,22 @@
 
     </section>
   </main>
+
+  <div id="scenario-actions" popover="auto" aria-label="Azioni per lo scenario">
+    <button id="scenario-rename" type="button">Rinomina</button>
+    <button id="scenario-copy" type="button">Duplica</button>
+    <button id="scenario-delete" class="danger-button" type="button">Elimina</button>
+  </div>
+
+  <dialog id="scenario-editor" class="small-dialog" aria-labelledby="scenario-editor-title">
+    <form id="scenario-form" class="editor">
+      <div class="dialog-heading"><h2 id="scenario-editor-title">Scenario</h2><button id="scenario-cancel" type="button" aria-label="Chiudi">×</button></div>
+      <div class="field"><label for="scenario-name">Nome</label><input id="scenario-name" name="name" maxlength="60" required></div>
+      <div id="scenario-links-field" hidden><label><input id="scenario-keep-links" type="checkbox" checked> Mantieni i collegamenti</label></div>
+      <p id="scenario-error" class="field-help" role="alert"></p>
+      <div class="editor-actions"><button class="primary-button" type="submit" id="scenario-save">Continua</button></div>
+    </form>
+  </dialog>
 
   <div id="quick-editor" class="context-popover" popover="manual" role="dialog" aria-labelledby="quick-title">
     <form id="quick-form">
