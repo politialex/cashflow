@@ -1,11 +1,14 @@
-import { simulateBoard } from './board-model.js';
+import { flowOrder, simulateBoard } from './board-model.js';
 import { currentMonth } from './flow-calendar.js';
 import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-storage.js';
 
 const cameraKey = 'cashflow-studio.camera.v1';
 const privacyKey = 'cashflow-studio.privacy.v1';
 const themeKey = 'cashflow-studio.theme.v1';
-const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+const currencyCodes = new Set(['EUR', 'USD', 'GBP']);
+let displayCurrency = 'EUR';
+let displayRate = 1;
+let displayFormatter = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
 const percent = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
 const types = {
   bank: 'Conto bancario', deposit: 'Conto deposito', investment: 'Investimento',
@@ -140,7 +143,7 @@ privacyButton.addEventListener('click', () => {
   }
 });
 
-const money = (cents) => euro.format(cents / 100);
+const money = (cents) => (displayCurrency === 'EUR' ? '' : '≈ ') + displayFormatter.format(cents * displayRate / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
 const decimalInput = (number) => String(number).replace('.', ',');
 const providerName = (node) => typeof node.provider === 'string' ? node.provider.trim() : '';
@@ -200,6 +203,7 @@ function validateSavedBoard(value) {
 
 const boardStorage = await openBoardStorage(validateSavedBoard);
 if (boardStorage.board) board = boardStorage.board;
+loadDisplayCurrency();
 get('storage-state').textContent = boardStorage.readError ? 'Verifica il backup' : 'Salvato nel browser';
 if (boardStorage.readError) {
   writeStatus('Non tutti i dati locali sono stati letti. Puoi ripristinare da un file di backup.');
@@ -816,6 +820,8 @@ function drawProjection(periods, selection) {
         interest: sum.interest + current.interest, balance: current.balance };
     }, node);
   });
+  const ranks = flowOrder(board);
+  totals.sort((left, right) => ranks.get(left.id) - ranks.get(right.id));
   get('projection-rows').replaceChildren(...totals.map((result) => {
     const row = document.createElement('tr');
     const name = document.createElement('th');
@@ -831,16 +837,27 @@ function drawProjection(periods, selection) {
   }));
   get('simulation-status').textContent = year ? 'Anno ' + year + ' · ' + selectedPeriods.length + ' mesi simulati'
     : 'Mese ' + first.month + ' di ' + periods.length;
-  get('projection-events').replaceChildren(...selectedPeriods.flatMap(({ date, timeline }) => timeline.map((event) => {
-    const item = document.createElement('li');
-    const description = event.kind === 'transfer' ? nodeName(event.from) + ' → ' + nodeName(event.to) : nodeName(event.id);
-    item.append(document.createTextNode(date + '-' + String(event.day).padStart(2, '0') + ' · ' + description + ' · '));
-    const values = event.kind === 'transfer' ? [event.amount]
-      : [event.inflow, -event.outflow].filter(Boolean);
-    item.append(createAmount('projection-event-amount', values.length ? values.map(money).join(' / ') : money(0)));
-    return item;
-  })));
-  get('projection-event-details').hidden = !get('projection-events').childElementCount;
+  const nodeRules = new Map(board.nodes.map((node) => [node.id, node]));
+  const transferRules = new Map(board.transfers.map((transfer) => [transfer.id, transfer]));
+  const rows = selectedPeriods.flatMap(({ date, timeline }) => timeline.flatMap((event) => {
+    const isTransfer = event.kind === 'transfer';
+    const rule = (isTransfer ? transferRules : nodeRules).get(event.id);
+    const schedule = rule?.schedule;
+    const frequency = schedule?.annualDistribution === 'installments' ? '12 quote annue'
+      : schedule?.frequency === 'interval' ? 'Ogni ' + schedule.intervalMonths + ' mesi'
+      : { monthly: 'Mensile', annual: 'Annuale', once: 'Una tantum' }[schedule?.frequency ?? rule?.frequency ?? 'monthly'];
+    const day = date + '-' + String(event.day).padStart(2, '0');
+    const movements = isTransfer ? [[nodeName(event.from), nodeName(event.to), event.amount]]
+      : [['Esterno', nodeName(event.id), event.inflow], [nodeName(event.id), 'Esterno', event.outflow]].filter((item) => item[2]);
+    return movements.map(([from, to, amount]) => {
+      const row = document.createElement('tr');
+      for (const value of [day, from, to, frequency]) row.insertCell().textContent = value;
+      writeAmount(row.insertCell(), money(amount));
+      return row;
+    });
+  }));
+  get('projection-movement-rows').replaceChildren(...rows);
+  get('projection-event-details').hidden = !rows.length;
 }
 
 function render() {
@@ -1426,6 +1443,74 @@ document.addEventListener('click', dismissOutside, true);
 const scenarioTabs = get('scenario-tabs');
 const scenarioEditor = get('scenario-editor');
 
+function displayCurrencyKey() {
+  return 'cashflow-studio.display-currency.' + boardStorage.archive.activeId;
+}
+
+function setDisplayCurrency(code, rate) {
+  displayCurrency = code;
+  displayRate = rate;
+  displayFormatter = new Intl.NumberFormat('it-IT', { style: 'currency', currency: code });
+  const button = get('open-currency');
+  if (button) {
+    button.querySelector('[data-currency-code]')?.replaceChildren(code);
+    button.setAttribute('aria-label', 'Valuta di visualizzazione: ' + code);
+  }
+}
+
+function loadDisplayCurrency() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(displayCurrencyKey()) ?? 'null');
+    if (saved && currencyCodes.has(saved.code) && Number.isFinite(saved.rate) && saved.rate > 0 && saved.rate <= 100000) {
+      setDisplayCurrency(saved.code, saved.code === 'EUR' ? 1 : saved.rate);
+      return;
+    }
+  } catch {
+    // Una preferenza non disponibile non cambia l’unità contabile.
+  }
+  setDisplayCurrency('EUR', 1);
+}
+
+const currencyDialog = get('currency-view');
+const currencySelect = get('display-currency');
+const rateInput = get('currency-rate');
+function showRateField() {
+  const code = currencySelect.value;
+  get('currency-rate-field').hidden = code === 'EUR';
+  get('currency-rate-label').textContent = '1 EUR = … ' + code;
+  get('currency-error').textContent = '';
+}
+get('open-currency')?.addEventListener('click', () => {
+  currencySelect.value = displayCurrency;
+  rateInput.value = displayCurrency === 'EUR' ? '' : decimalInput(displayRate);
+  showRateField();
+  currencyDialog.showModal();
+});
+currencySelect.addEventListener('change', () => {
+  rateInput.value = currencySelect.value === displayCurrency && displayCurrency !== 'EUR' ? decimalInput(displayRate) : '';
+  showRateField();
+});
+get('close-currency').addEventListener('click', () => currencyDialog.close());
+get('currency-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const code = currencySelect.value;
+  try {
+    if (!currencyCodes.has(code)) throw new RangeError('Scegli una valuta supportata.');
+    if (privacyMode && code !== 'EUR') throw new Error('Mostra gli importi per inserire e verificare il tasso.');
+    const rate = code === 'EUR' ? 1 : parseDecimal(rateInput.value, 'Tasso', .000001, 100000, 6);
+    try {
+      localStorage.setItem(displayCurrencyKey(), JSON.stringify({ code, rate }));
+    } catch {
+      // La scelta vale per la sessione corrente.
+    }
+    setDisplayCurrency(code, rate);
+    render();
+    currencyDialog.close();
+  } catch (error) {
+    get('currency-error').textContent = error.message;
+  }
+});
+
 function renderScenarioTabs(focus = false) {
   const { scenarios, activeId } = boardStorage.archive;
   scenarioTabs.replaceChildren(...scenarios.map(({ id, name }) => {
@@ -1455,6 +1540,7 @@ async function changeScenario(operation, replaceBoard = true) {
     await operation();
     if (replaceBoard) {
       board = boardStorage.board;
+      loadDisplayCurrency();
       history = [];
       future = [];
       selected = null;
@@ -1586,6 +1672,12 @@ get('load-example').addEventListener('click', () => {
 });
 
 get('open-simulation').addEventListener('click', () => simulation.showModal());
+get('open-table')?.addEventListener('click', () => {
+  get('projection-month').value = '1';
+  drawProjection(simulateBoard(board, horizon, projectionStart), '1');
+  get('projection-event-details').open = true;
+  simulation.showModal();
+});
 get('close-simulation').addEventListener('click', () => simulation.close());
 get('simulation-form').addEventListener('submit', (event) => {
   event.preventDefault();
@@ -1604,7 +1696,7 @@ get('simulation-form').addEventListener('submit', (event) => {
 get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon, projectionStart), get('projection-month').value));
 
 document.addEventListener('keydown', (event) => {
-  if (backupDialog.open || scenarioEditor.open || event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
+  if (backupDialog.open || scenarioEditor.open || currencyDialog.open || event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
   if (drag?.kind === 'node' && event.key !== 'Escape') return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();
