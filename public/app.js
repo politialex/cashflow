@@ -1,6 +1,6 @@
 import { simulateBoard } from './board-model.js';
+import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-storage.js';
 
-const storageKey = 'cashflow-studio.board.v1';
 const cameraKey = 'cashflow-studio.camera.v1';
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
 const percent = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
@@ -21,6 +21,10 @@ const transferForm = get('transfer-form');
 const simulation = get('simulation');
 const newNodeDialog = get('new-node-dialog');
 const quickEditor = get('quick-editor');
+const backupDialog = get('backup');
+const backupFile = get('backup-file');
+const backupStatus = get('backup-status');
+const restoreBackupButton = get('restore-backup');
 const mobilePanels = matchMedia('(max-width: 900px)');
 const nodesPanel = get('nodes-panel');
 const panels = [
@@ -43,8 +47,11 @@ let pendingConnectionFrom = null;
 let quickTarget = null;
 let history = [];
 let future = [];
-let storageReadable = true;
 let desktopNodesOpen = true;
+let saveRevision = 0;
+let backupRead = 0;
+let pendingBackup;
+let restoringBackup = false;
 
 const money = (cents) => euro.format(cents / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
@@ -94,7 +101,7 @@ function writeStatus(message) {
 }
 
 function validateSavedBoard(value) {
-  simulateBoard(value, 1);
+  simulateBoard(value, horizon);
   for (const node of value.nodes) {
     if (typeof node.name !== 'string' || !Object.hasOwn(types, node.type)
       || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
@@ -104,12 +111,11 @@ function validateSavedBoard(value) {
   return { ...value, nodes: value.nodes.map((node) => ({ ...node, ...boundPosition(node.type, node.x, node.y) })) };
 }
 
-try {
-  const saved = localStorage.getItem(storageKey);
-  if (saved) board = validateSavedBoard(JSON.parse(saved));
-} catch {
-  storageReadable = false;
-  writeStatus('Il salvataggio del browser non è disponibile. Le modifiche restano in questa sessione.');
+const boardStorage = await openBoardStorage(validateSavedBoard);
+if (boardStorage.board) board = boardStorage.board;
+get('storage-state').textContent = boardStorage.readError ? 'Verifica il backup' : 'Salvato nel browser';
+if (boardStorage.readError) {
+  writeStatus('Non tutti i dati locali sono stati letti. Puoi ripristinare da un file di backup.');
 }
 
 try {
@@ -123,14 +129,27 @@ try {
   // Un’inquadratura illeggibile può essere sostituita senza perdere la board.
 }
 
-function save() {
-  if (!storageReadable) return false;
+async function saveBoard(value = board) {
+  const revision = ++saveRevision;
+  get('storage-state').textContent = 'Salvataggio…';
   try {
-    localStorage.setItem(storageKey, JSON.stringify(board));
-    localStorage.setItem(cameraKey, JSON.stringify(camera));
+    await boardStorage.save(value);
+    if (revision === saveRevision) get('storage-state').textContent = 'Salvato nel browser';
     return true;
   } catch {
+    if (revision === saveRevision) {
+      get('storage-state').textContent = 'Salvataggio non riuscito';
+      writeStatus('Le modifiche non sono state salvate. Scarica un backup per conservarle.');
+    }
     return false;
+  }
+}
+
+function saveCamera() {
+  try {
+    localStorage.setItem(cameraKey, JSON.stringify(camera));
+  } catch {
+    // L’inquadratura non impedisce il salvataggio della board.
   }
 }
 
@@ -148,7 +167,7 @@ function commit(next, nextSelection, message, record = true) {
   }
   board = { ...next, nodes: next.nodes.map((node) => ({ ...node, ...boundPosition(node.type, node.x, node.y) })) };
   selected = nextSelection;
-  save();
+  void saveBoard();
   render();
   writeStatus(message);
   return true;
@@ -159,7 +178,7 @@ function undo() {
   future.push(cloneBoard());
   board = history.pop();
   selected = null;
-  save();
+  void saveBoard();
   render();
   writeStatus('Modifica annullata.');
 }
@@ -169,7 +188,7 @@ function redo() {
   history.push(cloneBoard());
   board = future.pop();
   selected = null;
-  save();
+  void saveBoard();
   render();
   writeStatus('Modifica ripristinata.');
 }
@@ -209,7 +228,7 @@ function applyCamera() {
   viewport.style.setProperty('--grid-x', displayX % (grid * camera.zoom) + 'px');
   viewport.style.setProperty('--grid-y', displayY % (grid * camera.zoom) + 'px');
   get('zoom-level').value = Math.round(camera.zoom * 100) + '%';
-  save();
+  saveCamera();
 }
 
 function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + viewport.clientWidth / 2,
@@ -874,7 +893,7 @@ viewport.addEventListener('pointerup', (event) => {
   if (drag?.kind === 'canvas') {
     drag = null;
     viewport.classList.remove('is-panning');
-    save();
+    saveCamera();
   }
 });
 
@@ -918,6 +937,80 @@ updatePanels();
 get('zoom-in').addEventListener('click', () => setZoom(camera.zoom + .15));
 get('zoom-out').addEventListener('click', () => setZoom(camera.zoom - .15));
 get('fit-view').addEventListener('click', fitView);
+get('open-backup').addEventListener('click', () => {
+  pendingBackup = undefined;
+  backupFile.value = '';
+  backupStatus.textContent = '';
+  restoreBackupButton.disabled = true;
+  backupDialog.showModal();
+});
+get('close-backup').addEventListener('click', () => backupDialog.close());
+backupDialog.addEventListener('cancel', (event) => {
+  if (restoringBackup) event.preventDefault();
+});
+backupDialog.addEventListener('close', () => { backupRead += 1; });
+
+get('export-backup').addEventListener('click', () => {
+  const json = JSON.stringify(createBoardBackup(board), null, 2);
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'cashflow-studio-backup.json';
+  backupDialog.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+backupFile.addEventListener('change', async () => {
+  const read = ++backupRead;
+  const file = backupFile.files[0];
+  pendingBackup = undefined;
+  restoreBackupButton.disabled = true;
+  backupStatus.textContent = file ? 'Verifica del file…' : '';
+  if (!file) return;
+
+  try {
+    const restored = readBoardBackup(JSON.parse(await file.text()), validateSavedBoard);
+    if (read !== backupRead) return;
+    pendingBackup = restored;
+    restoreBackupButton.disabled = false;
+    backupStatus.textContent = 'Backup valido. Conferma per sostituire la board.';
+  } catch {
+    if (read !== backupRead) return;
+    backupStatus.textContent = 'File non valido o versione non supportata.';
+  }
+});
+
+restoreBackupButton.addEventListener('click', async () => {
+  if (!pendingBackup || restoringBackup) return;
+  restoringBackup = true;
+  const controls = [...backupDialog.querySelectorAll('button, input')];
+  for (const control of controls) control.disabled = true;
+  backupStatus.textContent = 'Ripristino…';
+  const saved = await saveBoard(pendingBackup);
+  restoringBackup = false;
+  for (const control of controls) control.disabled = false;
+  if (!saved) {
+    backupStatus.textContent = 'Ripristino non riuscito. La board corrente è ancora disponibile.';
+    restoreBackupButton.focus();
+    return;
+  }
+
+  board = pendingBackup;
+  history = [];
+  future = [];
+  selected = null;
+  connectFrom = null;
+  viewport.classList.remove('connect-mode');
+  if (quickEditor.matches(':popover-open')) quickEditor.hidePopover();
+  quickTarget = null;
+  backupDialog.close();
+  render();
+  fitView();
+  writeStatus('Board ripristinata.');
+});
+
 get('add-node').addEventListener('click', () => openNewNode());
 get('panel-add-node').addEventListener('click', () => openNewNode());
 get('close-new-node').addEventListener('click', () => newNodeDialog.close());
@@ -1088,7 +1181,7 @@ get('simulation-form').addEventListener('submit', (event) => {
 get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon), Number(get('projection-month').value)));
 
 document.addEventListener('keydown', (event) => {
-  if (event.target.matches('input, select, textarea') || quickEditor.matches(':popover-open')) return;
+  if (backupDialog.open || event.target.matches('input, select, textarea') || quickEditor.matches(':popover-open')) return;
   if (drag?.kind === 'node' && event.key !== 'Escape') return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();
