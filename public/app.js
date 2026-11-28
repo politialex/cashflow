@@ -2,6 +2,7 @@ import { simulateBoard } from './board-model.js';
 import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-storage.js';
 
 const cameraKey = 'cashflow-studio.camera.v1';
+const privacyKey = 'cashflow-studio.privacy.v1';
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
 const percent = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
 const types = {
@@ -52,6 +53,56 @@ let saveRevision = 0;
 let backupRead = 0;
 let pendingBackup;
 let restoringBackup = false;
+let privacyMode = false;
+const displayedAmounts = new WeakMap();
+
+function writeAmount(element, text) {
+  displayedAmounts.set(element, text);
+  element.dataset.privateAmount = '';
+  element.textContent = privacyMode ? '••••' : text;
+}
+
+function createAmount(className, text) {
+  const element = createText(className, '');
+  writeAmount(element, text);
+  return element;
+}
+
+const privateInputs = [...document.querySelectorAll('[data-private-input]')].map((input) => {
+  const placeholder = createText('private-amount-placeholder', 'Valore nascosto');
+  input.after(placeholder);
+  return { input, placeholder };
+});
+const privacyButton = get('toggle-privacy');
+
+function applyPrivacyMode() {
+  privacyButton.setAttribute('aria-pressed', String(privacyMode));
+  document.querySelectorAll('[data-private-amount]').forEach((element) => {
+    element.textContent = privacyMode ? '••••' : displayedAmounts.get(element);
+  });
+  for (const { input, placeholder } of privateInputs) {
+    input.hidden = privacyMode;
+    input.readOnly = privacyMode;
+    placeholder.hidden = !privacyMode;
+  }
+}
+
+try {
+  privacyMode = sessionStorage.getItem(privacyKey) === 'on';
+} catch {
+  // Il controllo funziona anche in una pagina senza accesso allo storage.
+}
+applyPrivacyMode();
+
+privacyButton.addEventListener('click', () => {
+  privacyMode = !privacyMode;
+  applyPrivacyMode();
+  try {
+    sessionStorage.setItem(privacyKey, privacyMode ? 'on' : 'off');
+  } catch {
+    // La preferenza resta valida finché la pagina rimane aperta.
+  }
+});
 
 const money = (cents) => euro.format(cents / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
@@ -356,7 +407,7 @@ function drawEdges(firstMonth, temporaryPoint = null, nodes = board.nodes) {
     const amount = transferAmount(transfer, firstMonth);
     const label = svgElement('text', { class: 'edge-label', x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 10, 'text-anchor': 'middle' });
     const cadence = { monthly: '/mese', annual: '/anno', once: ' una tantum' }[transfer.frequency];
-    label.textContent = money(Math.abs(amount)) + (cadence ?? '');
+    writeAmount(label, money(Math.abs(amount)) + (cadence ?? ''));
     group.append(label);
     group.addEventListener('click', (event) => { event.stopPropagation(); select('transfer', transfer.id); });
     group.addEventListener('keydown', (event) => {
@@ -525,7 +576,7 @@ function renderBoard(firstMonth) {
     setCardSelection(card, node.name);
     card.style.left = node.x + 'px';
     card.style.top = node.y + 'px';
-    const balance = createText('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node))));
+    const balance = createAmount('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node))));
     if (account && result.balance !== 0) balance.classList.add(result.balance > 0 ? 'positive' : 'negative');
     const provider = providerName(node);
     const metadata = createText('node-type', provider ? types[node.type] + ' · ' + provider : types[node.type]);
@@ -533,7 +584,7 @@ function renderBoard(firstMonth) {
     card.append(metadata, createText('node-title', node.name), balance);
     if (account) {
       card.append(createText('node-caption', 'Disponibilità'));
-      if (node.annualRate) card.append(createText('node-rate', percent.format(node.annualRate) + '% annuo'));
+      if (node.annualRate) card.append(createAmount('node-rate', percent.format(node.annualRate) + '% annuo'));
     } else {
       card.append(createText('node-caption', signedFlow(node) >= 0 ? 'Entrata mensile' : 'Uscita mensile'));
     }
@@ -609,7 +660,7 @@ function renderInspector(firstMonth) {
       const term = document.createElement('dt');
       const amount = document.createElement('dd');
       term.textContent = label;
-      amount.textContent = money(value);
+      writeAmount(amount, money(value));
       if (label === 'Disponibilità' && value !== 0) amount.className = value > 0 ? 'positive' : 'negative';
       details.append(term, amount);
     }
@@ -661,7 +712,7 @@ function renderNodeList(firstMonth) {
     item.setAttribute('aria-pressed', String(isNodeSelected(node.id)));
     if (label !== node.name) item.setAttribute('aria-label', label + ': ' + node.name);
     const result = results.get(node.id);
-    item.append(createText('list-name', label), createText('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
+    item.append(createText('list-name', label), createAmount('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
     item.addEventListener('click', () => {
       select('node', node.id);
       const size = nodeSize(node);
@@ -715,7 +766,7 @@ function drawProjection(periods, monthNumber) {
     row.append(name);
     for (const value of [result.opening, result.inflow, result.outflow, result.interest, result.balance]) {
       const cell = row.insertCell();
-      cell.textContent = money(value);
+      writeAmount(cell, money(value));
       if (value < 0) cell.className = 'negative';
     }
     return row;
@@ -783,8 +834,13 @@ function openQuickEditor(kind, key, clientX, clientY) {
     get('quick-transfer-route').textContent = nodeName(transfer.from) + ' → ' + nodeName(transfer.to);
     get('quick-transfer-value').value = transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent) + '%';
     placeQuickEditor(clientX, clientY);
-    get('quick-transfer-value').focus();
-    get('quick-transfer-value').select();
+    const amountInput = get('quick-transfer-value');
+    if (privacyMode) {
+      get('close-quick-editor').focus();
+    } else {
+      amountInput.focus();
+      amountInput.select();
+    }
   }
 }
 

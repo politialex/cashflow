@@ -54,6 +54,7 @@ button:disabled { opacity: .45; cursor: default; }
 .document-title i { width: 5px; height: 5px; background: #39b86a; border-radius: 50%; }
 .header-actions { display: flex; gap: 6px; margin-left: auto; }
 .header-actions button { min-height: 30px; padding: 4px 10px; font-size: .68rem; }
+#toggle-privacy[aria-pressed="true"] { border-color: var(--accent); color: var(--text); background: var(--raised); box-shadow: inset 0 -2px var(--accent); }
 #toggle-inspector { display: none; }
 
 main, .workspace, .board-surface { min-width: 0; min-height: 0; }
@@ -200,6 +201,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px #
 .input-affix { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; padding-left: 9px; color: var(--muted); background: #121310; border: 1px solid var(--border-strong); border-radius: 4px; }
 .input-affix.suffix { grid-template-columns: minmax(0, 1fr) auto; padding: 0 9px 0 0; }
 .input-affix input { border: 0; background: transparent; }.field-help { color: var(--muted); font-size: .65rem; line-height: 1.35; }
+.private-amount-placeholder { min-height: 36px; display: flex; align-items: center; padding: 7px 9px; color: var(--muted); font-size: .75rem; }
 .compact-editor .account-only { display: none; }
 .summary { padding-top: 10px; border-top: 1px solid var(--border); }.summary h3 { margin-bottom: 7px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .form-summary:not(:empty) { padding: 10px; background: #121310; border: 1px solid #292d26; border-radius: 4px; }
@@ -251,4 +253,8 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
   .board-tools { bottom: max(10px, env(safe-area-inset-bottom)); gap: 4px; padding: 5px; }.board-tools button { padding-inline: 8px; font-size: .67rem; }.tool-divider { display: none; }
   .zoom-controls { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 56px); }
   .account-node { width: 220px; }.node-type-grid { grid-template-columns: 1fr; }.small-dialog { max-height: calc(100dvh - 24px); overflow: auto; }
+}
+
+@media (max-width: 380px) {
+  .brand > span:last-child { display: none; }
 }
