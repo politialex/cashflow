@@ -574,7 +574,8 @@ function startNodeDrag(event, node, card) {
   event.stopPropagation();
   drag = {
     kind: 'node', id: node.id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
-    selection: selectionForMove(node), toggle: event.shiftKey, nodes: board.nodes,
+    selection: selectionForMove(node), toggle: event.shiftKey && !viewport.classList.contains('connect-mode'),
+    linking: viewport.classList.contains('connect-mode'), nodes: board.nodes,
   };
   card.setPointerCapture(event.pointerId);
 }
@@ -583,6 +584,14 @@ function moveNodeDrag(event, node) {
   if (drag?.kind !== 'node' || drag.id !== node.id || drag.pointerId !== event.pointerId || drag.toggle) return;
   const dx = (event.clientX - drag.startX) / camera.zoom;
   const dy = (event.clientY - drag.startY) / camera.zoom;
+  if (drag.linking) {
+    if (Math.hypot(dx, dy) * camera.zoom < 6) return;
+    const side = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'bottom' : 'top');
+    drag = null;
+    startConnection(event, node, side);
+    previewConnection(event.clientX, event.clientY);
+    return;
+  }
   if (!drag.firstMonth && Math.hypot(dx, dy) < 3) return;
   drag.firstMonth ??= simulateBoard(board, 1, projectionStart)[0];
   drag.nodes = moveNodes(drag.selection, dx, dy);
@@ -1090,6 +1099,17 @@ function deleteSelection(target = selected) {
   return commit({ ...board, transfers: board.transfers.filter(({ id }) => id !== target.id) }, null, 'Collegamento eliminato.');
 }
 
+function canConnect(from, to) {
+  return from !== to && !board.transfers.some((transfer) => transfer.from === from && transfer.to === to);
+}
+
+function previewConnection(x, y) {
+  const target = document.elementFromPoint(x, y)?.closest('.board-node');
+  const accepted = target && canConnect(connection.from, target.dataset.id) ? target : null;
+  for (const card of nodesLayer.children) card.classList.toggle('is-connect-target', card === accepted);
+  drawEdges(simulateBoard(board, 1, projectionStart)[0], screenToWorld(x, y));
+}
+
 function finishConnection(clientX, clientY) {
   if (!connection) return;
   const origin = board.nodes.find(({ id }) => id === connection.from);
@@ -1097,7 +1117,9 @@ function finishConnection(clientX, clientY) {
   const targetElement = hit?.closest('.board-node');
   const target = targetElement && board.nodes.find(({ id }) => id === targetElement.dataset.id);
   connection = null;
-  if (!target || target.id === origin.id) {
+  setConnectMode(false);
+  for (const card of nodesLayer.children) card.classList.remove('is-connect-target');
+  if (!target || !canConnect(origin.id, target.id)) {
     drawEdges(simulateBoard(board, 1, projectionStart)[0]);
     if (!target && hit?.closest('#board-viewport') && !hit.closest('.edge-group')) {
       nodesLayer.querySelector('[data-id="' + CSS.escape(origin.id) + '"]').focus({ preventScroll: true });
@@ -1150,7 +1172,7 @@ viewport.addEventListener('pointermove', (event) => {
     return;
   }
   if (connection) {
-    drawEdges(simulateBoard(board, 1, projectionStart)[0], screenToWorld(event.clientX, event.clientY));
+    previewConnection(event.clientX, event.clientY);
     return;
   }
   if (drag?.kind !== 'canvas') return;
@@ -1335,7 +1357,7 @@ function setConnectMode(active) {
 get('add-transfer').addEventListener('click', () => {
   const active = !viewport.classList.contains('connect-mode');
   setConnectMode(active);
-  writeStatus(active ? 'Seleziona il nodo di partenza, poi quello di destinazione.' : 'Modalità collegamento chiusa.');
+  writeStatus(active ? 'Trascina un nodo sulla destinazione oppure seleziona i due nodi in sequenza.' : 'Modalità collegamento chiusa.');
 });
 
 function chooseConnectionNode(node) {
@@ -1344,7 +1366,10 @@ function chooseConnectionNode(node) {
     writeStatus('Seleziona il nodo di destinazione oppure usa Aggiungi.');
     return;
   }
-  if (connectFrom.id === node.id) return;
+  if (!canConnect(connectFrom.id, node.id)) {
+    writeStatus('Scegli una destinazione diversa e non ancora collegata.');
+    return;
+  }
   const transfer = makeTransfer(connectFrom, node);
   setConnectMode(false);
   if (commit({ ...board, transfers: [...board.transfers, transfer] }, { kind: 'transfer', id: transfer.id }, 'Collegamento creato.')) {
@@ -1592,6 +1617,10 @@ document.addEventListener('keydown', (event) => {
     deleteSelection();
   } else if (event.key === 'Escape') {
     setConnectMode(false);
+    if (connection) {
+      connection = null;
+      render();
+    }
     if (drag?.kind === 'node') {
       const { id: draggedId } = drag;
       drag = null;
