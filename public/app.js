@@ -932,8 +932,7 @@ get('new-node-form').addEventListener('submit', (event) => {
   if (commit({ nodes: [...board.nodes, node], transfers }, { kind: 'node', id: node.id },
     origin ? 'Elemento aggiunto e collegato.' : 'Elemento aggiunto.')) {
     newNodeDialog.close();
-    viewport.classList.remove('connect-mode');
-    connectFrom = null;
+    setConnectMode(false);
     const rect = viewport.getBoundingClientRect();
     const point = {
       x: rect.left + camera.x + node.x * camera.zoom,
@@ -943,10 +942,15 @@ get('new-node-form').addEventListener('submit', (event) => {
   }
 });
 
-get('add-transfer').addEventListener('click', () => {
+function setConnectMode(active) {
   connectFrom = null;
-  viewport.classList.toggle('connect-mode');
-  const active = viewport.classList.contains('connect-mode');
+  viewport.classList.toggle('connect-mode', active);
+  get('add-transfer').setAttribute('aria-pressed', String(active));
+}
+
+get('add-transfer').addEventListener('click', () => {
+  const active = !viewport.classList.contains('connect-mode');
+  setConnectMode(active);
   writeStatus(active ? 'Seleziona il nodo di partenza, poi quello di destinazione.' : 'Modalità collegamento chiusa.');
 });
 
@@ -958,8 +962,7 @@ function chooseConnectionNode(node) {
   }
   if (connectFrom.id === node.id) return;
   const transfer = makeTransfer(connectFrom, node);
-  viewport.classList.remove('connect-mode');
-  connectFrom = null;
+  setConnectMode(false);
   if (commit({ ...board, transfers: [...board.transfers, transfer] }, { kind: 'transfer', id: transfer.id }, 'Collegamento creato.')) {
     edgesLayer.querySelector('[data-id="' + CSS.escape(transfer.id) + '"]').focus({ preventScroll: true });
   }
@@ -1100,8 +1103,7 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     deleteSelection();
   } else if (event.key === 'Escape') {
-    viewport.classList.remove('connect-mode');
-    connectFrom = null;
+    setConnectMode(false);
     if (drag?.kind === 'node') {
       const { id: draggedId } = drag;
       drag = null;
