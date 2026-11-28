@@ -2,11 +2,11 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=layout-feedback">
-  <script src="./public/app.js?v=layout-feedback" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=floating-periods">
+  <script src="./public/app.js?v=floating-periods" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -103,7 +103,15 @@
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11m-4-4 4 4 4-4M5 17v3h14v-3"/></svg>
           </button>
         </div>
-        <button id="open-simulation" class="simulation-control" type="button" aria-haspopup="dialog" aria-controls="simulation"><span class="tool-icon" aria-hidden="true">▶</span>Simula</button>
+        <button id="open-simulation" class="simulation-control" type="button" aria-expanded="false" aria-controls="canvas-simulation"><span class="tool-icon" aria-hidden="true">▶</span>Simula</button>
+          <section id="canvas-simulation" aria-label="Simulazione sulla board" hidden>
+            <div class="quick-heading"><h2>Simulazione sulla board</h2><button id="close-canvas-simulation" type="button" aria-label="Chiudi simulazione sulla board">×</button></div>
+            <div class="field"><label for="canvas-sim-start">Da</label><input id="canvas-sim-start" type="month"></div>
+            <div id="canvas-sim-targets"></div>
+            <p id="canvas-sim-status" class="field-help" role="status"></p>
+            <div class="editor-actions"><button id="add-simulation-period" type="button">+ Simula periodo</button><button id="simulation-details" type="button" aria-haspopup="dialog" aria-controls="simulation">Dettagli</button></div>
+          </section>
+
       </div>
 
     </section>
@@ -138,7 +146,13 @@
           <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
         </select></div>
         <div class="quick-account-field field"><label for="quick-opening">Saldo iniziale (€)</label><input id="quick-opening" data-private-input name="opening" inputmode="decimal"></div>
-        <div class="field"><label for="quick-flow">Importo del flusso (€)</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
+        <div id="quick-flow-field" class="field"><label for="quick-flow">Importo del flusso (€)</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
+        <label id="quick-share-toggle-field" for="quick-share-enabled" hidden><input id="quick-share-enabled" type="checkbox"> Spesa condivisa</label>
+        <div id="quick-share-fields" class="field" hidden>
+          <div class="field"><label for="quick-share-total">Spesa totale (€)</label><input id="quick-share-total" data-private-input inputmode="decimal"></div>
+          <div class="field"><label for="quick-share-people">Partecipanti (te incluso)</label><input id="quick-share-people" type="number" min="1" step="1"></div>
+          <p class="field-help">La tua quota <output id="quick-share-amount" for="quick-share-total quick-share-people"></output></p>
+        </div>
         <div class="field"><label for="quick-schedule">Cadenza del flusso</label><select id="quick-schedule" name="schedule">
           <option value="">Mensile, dal mese iniziale</option><option value="monthly">Mensile con data</option>
           <option value="annual">Annuale, importo intero</option><option value="installments">Annuale, in 12 quote</option>

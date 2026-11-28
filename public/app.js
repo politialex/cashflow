@@ -1,5 +1,5 @@
-import { flowOrder, simulateBoard } from './board-model.js';
-import { currentMonth } from './flow-calendar.js';
+import { accountTypes, flowOrder, sharedExpenseShareCents, simulateBoard } from './board-model.js?v=shared-expenses';
+import { currentMonth, monthIndex } from './flow-calendar.js';
 import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-storage.js';
 
 const cameraKey = 'cashflow-studio.camera.v1';
@@ -14,7 +14,6 @@ const types = {
   bank: 'Conto bancario', deposit: 'Conto deposito', investment: 'Investimento',
   savings: 'Risparmio', cash: 'Liquidità', source: 'Entrata', expense: 'Spesa', other: 'Altro',
 };
-const accountTypes = new Set(['bank', 'deposit', 'investment', 'savings', 'cash']);
 const get = (id) => document.getElementById(id);
 const themeButton = get('toggle-theme');
 const themePicker = get('theme-picker');
@@ -53,10 +52,18 @@ themePicker.addEventListener('change', (event) => {
 });
 
 const viewport = get('board-viewport');
-const workspace = viewport.closest('.workspace');
 const fitButton = get('fit-view');
 const fullscreenButton = get('toggle-fullscreen');
 const mapControls = fitButton.parentElement;
+const header = document.querySelector('.site-header');
+const boardTools = document.querySelector('.board-tools');
+const boardStatus = get('board-status');
+const syncHeaderBottom = () => {
+  document.body.style.setProperty('--header-bottom', header.getBoundingClientRect().bottom + 'px');
+};
+new ResizeObserver(syncHeaderBottom).observe(header);
+window.addEventListener('resize', syncHeaderBottom);
+syncHeaderBottom();
 const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
@@ -72,7 +79,7 @@ const mobilePanels = matchMedia('(max-width: 900px)');
 const nodesPanel = get('nodes-panel');
 const toggleNodes = get('toggle-nodes');
 const grid = 20;
-const minZoom = .025;
+const minZoom = .01;
 const world = { width: 6400, height: 4400 };
 let board = { nodes: [], transfers: [] };
 let camera = { x: 0, y: 0, zoom: 1 };
@@ -80,6 +87,10 @@ let cameraRestored = false;
 let selected = null;
 let horizon = 12;
 let projectionStart = currentMonth();
+let canvasProjection = null;
+let canvasSimStart = projectionStart;
+let canvasTargets = [];
+let canvasTargetIndex = 0;
 get('projection-start').value = projectionStart;
 let drag = null;
 let connection = null;
@@ -155,7 +166,9 @@ const money = (cents) => (displayCurrency === 'EUR' ? '' : '≈ ') + displayForm
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
 const decimalInput = (number) => String(number).replace('.', ',');
 const providerName = (node) => typeof node.provider === 'string' ? node.provider.trim() : '';
-const signedFlow = (node) => node.monthlyInCents - node.monthlyOutCents;
+const signedFlow = (node) => node.monthlyInCents - (node.sharedExpense
+  ? sharedExpenseShareCents(node.sharedExpense.totalCents, node.sharedExpense.participants)
+  : node.monthlyOutCents);
 const id = () => crypto.randomUUID();
 const snap = (value) => Math.round(value / grid) * grid;
 const nodeIsAccount = (node) => accountTypes.has(node.type);
@@ -195,7 +208,7 @@ function nodeName(key) {
 }
 
 function writeStatus(message) {
-  get('board-status').textContent = message;
+  boardStatus.textContent = message;
 }
 
 function validateSavedBoard(value) {
@@ -308,7 +321,6 @@ function updatePanels(open = false) {
   if (!visible && nodesPanel.contains(document.activeElement)) toggleNodes.focus();
   nodesPanel.hidden = !visible;
   toggleNodes.setAttribute('aria-expanded', String(visible));
-  workspace.classList.toggle('nodes-panel-closed', !mobile && !visible);
 }
 
 function screenToWorld(clientX, clientY) {
@@ -331,8 +343,32 @@ function applyCamera() {
   saveCamera();
 }
 
-function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + viewport.clientWidth / 2,
-  clientY = viewport.getBoundingClientRect().top + viewport.clientHeight / 2) {
+function visibleBoardFrame(contentWidth = 1, contentHeight = 1) {
+  const rect = viewport.getBoundingClientRect();
+  const areas = visibleFitAreas();
+  const fitScale = (area) => Math.min(
+    (area.right - area.left) / Math.max(1, contentWidth),
+    (area.bottom - area.top) / Math.max(1, contentHeight),
+  );
+  const fallback = { left: 0, top: 0, right: rect.width, bottom: rect.height };
+  const area = areas.reduce((best, current) => fitScale(current) > fitScale(best) ? current : best, areas[0] ?? fallback);
+  return {
+    left: rect.left + area.left, top: rect.top + area.top,
+    right: rect.left + area.right, bottom: rect.top + area.bottom,
+  };
+}
+
+function visibleBoardCenter() {
+  const area = visibleBoardFrame();
+  return { x: (area.left + area.right) / 2, y: (area.top + area.bottom) / 2 };
+}
+
+function setZoom(nextZoom, clientX, clientY) {
+  if (clientX === undefined) {
+    const center = visibleBoardCenter();
+    clientX = center.x;
+    clientY = center.y;
+  }
   const rect = viewport.getBoundingClientRect();
   const oldZoom = camera.zoom;
   const zoom = Math.max(minZoom, Math.min(2, nextZoom));
@@ -351,7 +387,7 @@ function centerBoard(centerX = viewport.clientWidth / 2, centerY = viewport.clie
 function visibleFitAreas() {
   const frame = viewport.getBoundingClientRect();
   const overlays = [nodesPanel, mapControls,
-    viewport.parentElement.querySelector('.board-tools'), document.querySelector('.site-header')];
+    boardTools, header, get('open-simulation'), get('canvas-simulation')];
   let areas = [{ left: 0, top: 0, right: frame.width, bottom: frame.height }];
   for (const overlay of overlays) {
     if (!overlay) continue;
@@ -488,7 +524,11 @@ function makeTransfer(from, to) {
     amountCents: inferredTransferAmount(from, to), percent: 0, frequency: 'monthly',
   };
   const owner = linkedFlowNode(from, to);
-  return owner?.schedule ? syncFlowTransfer(transfer, owner) : transfer;
+  return owner?.schedule || owner?.sharedExpense ? syncFlowTransfer(transfer, owner) : transfer;
+}
+
+function sharedExpenseForTransfer(transfer) {
+  return board.nodes.find((node) => node.id === transfer.to && node.sharedExpense);
 }
 
 function transferAmount(transfer, firstMonth) {
@@ -722,8 +762,9 @@ function startConnection(event, node, side) {
 }
 
 function renderBoard(firstMonth) {
+  const displayedMonth = canvasProjection ?? firstMonth;
   get('board-empty').hidden = board.nodes.length > 0;
-  const results = new Map(firstMonth.nodes.map((result) => [result.id, result]));
+  const results = new Map(displayedMonth.nodes.map((result) => [result.id, result]));
   const cards = board.nodes.map((node) => {
     const result = results.get(node.id);
     const account = nodeIsAccount(node);
@@ -742,7 +783,9 @@ function renderBoard(firstMonth) {
     if (provider) metadata.title = provider;
     card.append(metadata, createText('node-title', node.name), balance);
     if (account) {
-      card.append(createText('node-caption', 'Disponibilità'));
+      const date = displayedMonth.date;
+      card.append(createText('node-caption', canvasProjection ? 'Proiezione · ' + date : 'Disponibilità'));
+      card.toggleAttribute('data-projected', Boolean(canvasProjection));
       if (node.annualRate) card.append(createAmount('node-rate', percent.format(node.annualRate) + '% annuo'));
     } else {
       card.append(createText('node-caption', signedFlow(node) >= 0 ? 'Entrata mensile' : 'Uscita mensile'));
@@ -793,7 +836,7 @@ function renderBoard(firstMonth) {
     return card;
   });
   nodesLayer.replaceChildren(...cards);
-  drawEdges(firstMonth);
+  drawEdges(displayedMonth);
 }
 
 function setValues(form, values) {
@@ -855,12 +898,14 @@ function renderNodeList(firstMonth) {
     item.append(createText('list-name', label), createAmount('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
     item.addEventListener('click', () => {
       updateSelection({ kind: 'node', id: node.id });
+      if (mobilePanels.matches) updatePanels();
       const size = nodeSize(node);
-      camera.x = viewport.clientWidth / 2 - (node.x + size.width / 2) * camera.zoom;
-      camera.y = viewport.clientHeight / 2 - (node.y + size.height / 2) * camera.zoom;
+      const center = visibleBoardCenter();
+      const rect = viewport.getBoundingClientRect();
+      camera.x = center.x - rect.left - (node.x + size.width / 2) * camera.zoom;
+      camera.y = center.y - rect.top - (node.y + size.height / 2) * camera.zoom;
       applyCamera();
       if (mobilePanels.matches) {
-        updatePanels();
         viewport.focus({ preventScroll: true });
       } else {
         list.querySelector('[data-id="' + CSS.escape(node.id) + '"]')?.focus({ preventScroll: true });
@@ -949,10 +994,11 @@ function drawProjection(periods, selection) {
 }
 
 function render() {
+  calculateCanvasProjection();
   updateFitControl();
   const periods = simulateBoard(board, horizon, projectionStart);
   renderBoard(periods[0]);
-  renderNodeList(periods[0]);
+  renderNodeList(canvasProjection ?? periods[0]);
   const projectionMonth = get('projection-month');
   const previous = projectionMonth.value;
   const years = new Set(periods.map(({ date }) => date.slice(0, 4)));
@@ -988,12 +1034,11 @@ function pointAnchor(x, y) {
 }
 
 function openNewNode(clientX = null, clientY = null, origin = connectFrom, trigger = viewport) {
-  const rect = viewport.getBoundingClientRect();
-  const x = clientX ?? rect.left + viewport.clientWidth / 2;
-  const y = clientY ?? rect.top + viewport.clientHeight / 2;
-  nodeDraft = { position: screenToWorld(x, y), origin: origin?.id, trigger };
+  const center = clientX === null ? visibleBoardCenter() : { x: clientX, y: clientY };
+  nodeDraft = { position: screenToWorld(center.x, center.y), origin: origin?.id, trigger };
   get('new-node-preview').replaceChildren();
-  placePopover(newNodeDialog, clientX === null ? trigger.getBoundingClientRect() : pointAnchor(x, y));
+  const anchor = clientX === null && trigger !== viewport ? trigger.getBoundingClientRect() : pointAnchor(center.x, center.y);
+  placePopover(newNodeDialog, anchor);
   get('new-node-form').querySelector('button[name="type"]').focus({ preventScroll: true });
 }
 
@@ -1030,10 +1075,28 @@ function updateScheduleFields() {
 }
 
 function updateEditorFields() {
-  const account = accountTypes.has(get('quick-type').value);
+  const type = get('quick-type').value;
+  const account = accountTypes.has(type);
   for (const field of quickEditor.querySelectorAll('.quick-account-field')) field.hidden = !account;
+  const expense = type === 'expense';
+  const share = expense && get('quick-share-enabled').checked;
+  get('quick-share-toggle-field').hidden = !expense;
+  get('quick-share-fields').hidden = !share;
+  get('quick-flow-field').hidden = share;
+  if (share) updateShareQuote();
   get('quick-transfer-value').labels[0].textContent = get('quick-transfer-mode').value === 'percent'
     ? 'Percentuale delle entrate (%)' : 'Importo (€)';
+}
+
+function updateShareQuote() {
+  let quote = '—';
+  try {
+    const total = toCents(get('quick-share-total').value, 'Totale della spesa');
+    quote = money(sharedExpenseShareCents(total, Number(get('quick-share-people').value)));
+  } catch {
+    // An incomplete edit has no preview and is checked when the editor closes.
+  }
+  writeAmount(get('quick-share-amount'), quote);
 }
 
 function clearEditorError() {
@@ -1064,6 +1127,9 @@ function openQuickEditor(kind, key, clientX = null, clientY = null) {
       name: node.name, provider: providerName(node), type: node.type, opening: moneyInput(node.openingCents),
       flow: (signedFlow(node) >= 0 ? '+' : '') + moneyInput(signedFlow(node)), annualRate: decimalInput(node.annualRate),
     });
+    get('quick-share-enabled').checked = Boolean(node.sharedExpense);
+    get('quick-share-total').value = moneyInput(node.sharedExpense?.totalCents ?? Math.abs(signedFlow(node)));
+    get('quick-share-people').value = node.sharedExpense?.participants ?? 2;
     const schedule = node.schedule;
     get('quick-schedule').value = schedule?.annualDistribution === 'installments' ? 'installments' : schedule?.frequency ?? '';
     get('quick-schedule-start').type = schedule?.frequency === 'once' ? 'month' : 'date';
@@ -1074,12 +1140,14 @@ function openQuickEditor(kind, key, clientX = null, clientY = null) {
   } else {
     get('quick-title').textContent = 'Modifica collegamento';
     get('quick-transfer-route').textContent = nodeName(transfer.from) + ' → ' + nodeName(transfer.to);
+    const shared = sharedExpenseForTransfer(transfer);
     setValues(form, {
-      mode: transfer.mode, frequency: transfer.frequency,
-      value: transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent),
+      mode: shared ? 'fixed' : transfer.mode, frequency: shared ? 'monthly' : transfer.frequency,
+      value: shared ? moneyInput(Math.abs(signedFlow(shared)))
+        : transfer.mode === 'fixed' ? moneyInput(transfer.amountCents) : decimalInput(transfer.percent),
     });
   }
-  const linked = Boolean(transfer?.schedule);
+  const linked = Boolean(transfer && (transfer.schedule || sharedExpenseForTransfer(transfer)));
   get('quick-linked-flow').hidden = !linked;
   for (const id of ['quick-transfer-mode', 'quick-transfer-frequency', 'quick-transfer-value']) get(id).disabled = linked;
   updateEditorFields();
@@ -1123,11 +1191,23 @@ function applyQuickEditor(restoreFocus = true) {
       const provider = read('quick-provider').trim();
       const type = read('quick-type');
       const account = accountTypes.has(type);
+      let sharing;
+      let flow;
+      if (type === 'expense' && get('quick-share-enabled').checked) {
+        const totalCents = read('quick-share-total', (value) => toCents(value, 'Totale della spesa'));
+        const participants = read('quick-share-people', Number);
+        flow = -sharedExpenseShareCents(totalCents, participants);
+        sharing = current.sharedExpense?.totalCents === totalCents && current.sharedExpense.participants === participants
+          ? current.sharedExpense : { ...current.sharedExpense, totalCents, participants };
+      } else {
+        flow = read('quick-flow', (value) => toCents(value, 'Flusso', true));
+      }
       updated = applySignedFlow({
         ...current, name, type,
         openingCents: account ? read('quick-opening', (value) => toCents(value, 'Saldo iniziale', true)) : 0,
         annualRate: account ? read('quick-rate', (value) => parseDecimal(value, 'Rendimento', -100, 100, 4)) : 0,
-      }, read('quick-flow', (value) => toCents(value, 'Flusso', true)));
+      }, flow);
+      if (sharing !== current.sharedExpense) updated.sharedExpense = sharing;
       if (provider !== providerName(current)) updated.provider = provider;
       const scheduleMode = read('quick-schedule');
       let schedule;
@@ -1143,7 +1223,8 @@ function applyQuickEditor(restoreFocus = true) {
         if (scheduleMode === 'interval') schedule.intervalMonths = read('quick-schedule-interval', Number);
         else delete schedule.intervalMonths;
       }
-      if (JSON.stringify(schedule) !== JSON.stringify(current.schedule) || signedFlow(updated) !== signedFlow(current)) {
+      if (JSON.stringify(schedule) !== JSON.stringify(current.schedule) || signedFlow(updated) !== signedFlow(current)
+        || sharing !== current.sharedExpense) {
         updated.schedule = schedule;
         const links = board.transfers.filter(({ from, to }) => from === id || to === id);
         const link = links.length === 1 ? links[0] : null;
@@ -1153,14 +1234,14 @@ function applyQuickEditor(restoreFocus = true) {
         const matching = owner?.id === id && (link.schedule
           || (link.frequency === 'monthly' && ((link.mode === 'fixed' && link.amountCents === Math.abs(signedFlow(current)))
             || (current.type === 'source' && link.mode === 'percent' && link.percent === 100))));
-        if (matching && updated.type === current.type) {
+        if ((matching || (owner?.id === id && (sharing || current.sharedExpense))) && updated.type === current.type) {
           transfers = transfers.map((item) => item === link ? syncFlowTransfer(item, updated) : item);
         } else if (link?.schedule && updated.type !== current.type) {
           throw new RangeError('Rimuovi prima la cadenza collegata al nodo.');
         }
       }
     } else {
-      if (current.schedule) {
+      if (current.schedule || sharedExpenseForTransfer(current)) {
         closeQuickEditor(restoreFocus);
         return true;
       }
@@ -1319,6 +1400,26 @@ viewport.addEventListener('pointercancel', () => {
   selectionBox.hidden = true;
   viewport.classList.remove('is-panning');
   render();
+});
+
+viewport.addEventListener('focusin', (event) => {
+  if (!event.target.matches(':focus-visible')) return;
+  const item = event.target.closest('.board-node, .edge-group');
+  if (!item) return;
+  const rect = item.getBoundingClientRect();
+  const frame = visibleBoardFrame(rect.width, rect.height);
+  const offset = (start, end, minimum, maximum) => {
+    if (end - start > maximum - minimum) return (minimum + maximum - start - end) / 2;
+    if (start < minimum) return minimum - start;
+    if (end > maximum) return maximum - end;
+    return 0;
+  };
+  const dx = offset(rect.left, rect.right, frame.left, frame.right);
+  const dy = offset(rect.top, rect.bottom, frame.top, frame.bottom);
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+  camera.x += dx;
+  camera.y += dy;
+  applyCamera();
 });
 
 viewport.addEventListener('keydown', (event) => {
@@ -1497,6 +1598,9 @@ nodesLayer.addEventListener('click', (event) => {
 });
 
 get('quick-type').addEventListener('change', updateEditorFields);
+get('quick-share-enabled').addEventListener('change', updateEditorFields);
+get('quick-share-total').addEventListener('input', updateShareQuote);
+get('quick-share-people').addEventListener('input', updateShareQuote);
 get('quick-schedule').addEventListener('change', updateScheduleFields);
 get('quick-transfer-mode').addEventListener('change', updateEditorFields);
 get('close-quick-editor').addEventListener('click', () => applyQuickEditor());
@@ -1704,6 +1808,9 @@ async function changeScenario(operation, replaceBoard = true) {
     await operation();
     endScenarioRename();
     if (replaceBoard) {
+      canvasProjection = null;
+      canvasSim.hidden = true;
+      canvasSimButton.setAttribute('aria-expanded', 'false');
       board = boardStorage.board;
       loadDisplayCurrency();
       history = [];
@@ -1870,12 +1977,144 @@ function makeDemoBoard() {
   return { nodes: [salary, bank, bills, deposit, investment], transfers };
 }
 
-get('open-simulation').addEventListener('click', () => simulation.showModal());
-get('open-table')?.addEventListener('click', () => {
-  get('projection-month').value = '1';
-  drawProjection(simulateBoard(board, horizon, projectionStart), '1');
-  get('projection-event-details').open = true;
+const canvasSim = get('canvas-simulation');
+const canvasSimButton = get('open-simulation');
+const targetList = get('canvas-sim-targets');
+
+function calculateCanvasProjection() {
+  const target = canvasTargets[canvasTargetIndex];
+  canvasProjection = null;
+  const status = get('canvas-sim-status');
+  status.textContent = '';
+  get('add-simulation-period').disabled = true;
+  if (canvasSim.hidden) return;
+  if (target && canvasSimStart) {
+    try {
+      const months = monthIndex(target) - monthIndex(canvasSimStart) + 1;
+      if (months < 1 || months > 120) throw new RangeError('Scegli un mese tra quello iniziale e i 119 successivi.');
+      canvasProjection = simulateBoard(board, months, canvasSimStart).at(-1);
+      status.textContent = 'Sulla board: proiezione al ' + target + '.';
+      get('add-simulation-period').disabled = false;
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  } else {
+    status.textContent = 'Scegli il mese di arrivo.';
+  }
+}
+
+function renderCanvasTargets(focusIndex = null) {
+  targetList.replaceChildren(...canvasTargets.map((date, index) => {
+    const row = document.createElement('div');
+    row.className = 'canvas-sim-target';
+    const field = document.createElement('div');
+    field.className = 'field';
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'month';
+    input.id = 'canvas-target-' + index;
+    input.value = date;
+    label.htmlFor = input.id;
+    label.textContent = index === 0 ? '→ Mese di arrivo' : 'Mese di arrivo ' + (index + 1);
+    input.addEventListener('change', () => {
+      canvasTargets[index] = input.value;
+      canvasTargetIndex = index;
+      for (const [i, button] of [...targetList.querySelectorAll('[data-show-target]')].entries()) {
+        button.setAttribute('aria-pressed', String(i === index));
+        button.disabled = !canvasTargets[i];
+      }
+      render();
+    });
+    field.append(label, input);
+    const show = document.createElement('button');
+    show.type = 'button';
+    show.dataset.showTarget = '';
+    show.textContent = 'Mostra';
+    show.disabled = !date;
+    show.setAttribute('aria-label', 'Mostra proiezione ' + (index + 1) + ' sulla board');
+    show.setAttribute('aria-pressed', String(index === canvasTargetIndex));
+    show.addEventListener('click', () => {
+      canvasTargetIndex = index;
+      for (const item of targetList.querySelectorAll('[data-show-target]')) item.setAttribute('aria-pressed', String(item === show));
+      render();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', 'Rimuovi periodo ' + (index + 1));
+    remove.disabled = canvasTargets.length === 1;
+    remove.addEventListener('click', () => {
+      canvasTargets.splice(index, 1);
+      if (index < canvasTargetIndex) canvasTargetIndex -= 1;
+      else if (canvasTargetIndex >= canvasTargets.length) canvasTargetIndex = canvasTargets.length - 1;
+      renderCanvasTargets(canvasTargetIndex);
+      render();
+    });
+    row.append(field, show, remove);
+    return row;
+  }));
+  if (focusIndex !== null) get('canvas-target-' + focusIndex).focus();
+}
+
+function closeCanvasSimulation(restoreFocus = true) {
+  canvasSim.hidden = true;
+  canvasSimButton.setAttribute('aria-expanded', 'false');
+  canvasProjection = null;
+  if (restoreFocus) canvasSimButton.focus({ preventScroll: true });
+  render();
+}
+
+canvasSimButton.addEventListener('click', () => {
+  if (!canvasSim.hidden) {
+    closeCanvasSimulation();
+    return;
+  }
+  canvasSim.hidden = false;
+  canvasSimButton.setAttribute('aria-expanded', 'true');
+  canvasSimStart = currentMonth();
+  get('canvas-sim-start').value = canvasSimStart;
+  canvasTargets = [''];
+  canvasTargetIndex = 0;
+  renderCanvasTargets(0);
+  render();
+});
+get('close-canvas-simulation').addEventListener('click', () => closeCanvasSimulation());
+canvasSim.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeCanvasSimulation();
+});
+get('canvas-sim-start').addEventListener('change', (event) => {
+  canvasSimStart = event.currentTarget.value;
+  render();
+});
+get('add-simulation-period').addEventListener('click', () => {
+  canvasTargets.push('');
+  renderCanvasTargets(canvasTargets.length - 1);
+});
+get('simulation-details').addEventListener('click', () => {
+  if (canvasProjection) {
+    const months = monthIndex(canvasProjection.date) - monthIndex(canvasSimStart) + 1;
+    projectionStart = canvasSimStart;
+    horizon = months;
+    get('projection-start').value = projectionStart;
+    get('projection-length').value = horizon;
+    render();
+    get('projection-month').value = String(months);
+    drawProjection(simulateBoard(board, horizon, projectionStart), String(months));
+  }
   simulation.showModal();
+});
+get('open-table').addEventListener('click', () => {
+  get('projection-event-details').open = true;
+  if (canvasProjection) {
+    get('simulation-details').click();
+  } else {
+    get('projection-month').value = '1';
+    drawProjection(simulateBoard(board, horizon, projectionStart), '1');
+    simulation.showModal();
+  }
 });
 get('close-simulation').addEventListener('click', () => simulation.close());
 get('simulation-form').addEventListener('submit', (event) => {
