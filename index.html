@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=account-accordion">
-  <script src="./public/app.js?v=account-accordion" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=privacy-mode">
+  <script src="./public/app.js?v=privacy-mode" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -17,6 +17,7 @@
     </a>
     <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> Salvato nel browser</span></div>
     <div class="header-actions">
+      <button id="toggle-privacy" type="button" aria-pressed="false">Privacy</button>
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
       <button id="toggle-inspector" type="button" aria-controls="inspector" aria-expanded="false">Dettagli</button>
     </div>
@@ -68,9 +69,9 @@
           <div class="field"><label for="node-type">Tipo</label><select id="node-type" name="type" required>
             <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
           </select></div>
-          <div class="field account-only"><label for="node-opening">Saldo iniziale</label><div class="input-affix"><span>€</span><input id="node-opening" name="opening" type="text" inputmode="decimal" required></div></div>
-          <div class="field"><label for="node-flow">Flusso mensile</label><div class="input-affix"><span>€</span><input id="node-flow" name="flow" type="text" inputmode="decimal" aria-describedby="flow-help" required></div><p id="flow-help" class="field-help">Usa + per un’entrata e − per un’uscita.</p></div>
-          <div class="field account-only"><label for="node-rate">Rendimento annuo</label><div class="input-affix suffix"><input id="node-rate" name="annualRate" type="text" inputmode="decimal" required><span>%</span></div></div>
+          <div class="field account-only"><label for="node-opening">Saldo iniziale</label><div class="input-affix"><span>€</span><input id="node-opening" data-private-input name="opening" type="text" inputmode="decimal" required></div></div>
+          <div class="field"><label for="node-flow">Flusso mensile</label><div class="input-affix"><span>€</span><input id="node-flow" data-private-input name="flow" type="text" inputmode="decimal" aria-describedby="flow-help" required></div><p id="flow-help" class="field-help">Usa + per un’entrata e − per un’uscita.</p></div>
+          <div class="field account-only"><label for="node-rate">Rendimento annuo</label><div class="input-affix suffix"><input id="node-rate" data-private-input name="annualRate" type="text" inputmode="decimal" required><span>%</span></div></div>
           <section class="summary" aria-labelledby="node-summary-heading"><h3 id="node-summary-heading">Mese 1</h3><div id="node-summary" class="form-summary"></div></section>
           <div class="editor-actions"><button class="primary-button" type="submit">Salva</button><button id="delete-node" class="danger-button" type="button">Elimina</button></div>
         </form>
@@ -78,7 +79,7 @@
           <div class="connection-summary"><span id="transfer-from-label"></span><span aria-hidden="true">→</span><span id="transfer-to-label"></span></div>
           <input id="transfer-from" name="from" type="hidden"><input id="transfer-to" name="to" type="hidden">
           <div class="field"><label for="transfer-mode">Movimento</label><select id="transfer-mode" name="mode" required><option value="fixed">Importo fisso</option><option value="percent">Percentuale delle entrate</option></select></div>
-          <div class="field"><label for="transfer-value">Valore</label><input id="transfer-value" name="value" type="text" inputmode="decimal" required></div>
+          <div class="field"><label for="transfer-value">Valore</label><input id="transfer-value" data-private-input name="value" type="text" inputmode="decimal" required></div>
           <div class="field"><label for="transfer-frequency">Frequenza</label><select id="transfer-frequency" name="frequency" required><option value="monthly">Ogni mese</option><option value="annual">Ogni anno</option><option value="once">Una volta</option></select></div>
           <div class="editor-actions"><button class="primary-button" type="submit">Salva</button><button id="delete-transfer" class="danger-button" type="button">Elimina</button></div>
         </form>
@@ -92,11 +93,11 @@
       <div id="quick-node-fields">
         <label for="quick-name">Nome</label><input id="quick-name" name="name" maxlength="60">
         <label for="quick-provider">Fornitore</label><input id="quick-provider" name="provider" maxlength="60">
-        <label for="quick-flow">Flusso mensile</label><input id="quick-flow" name="flow" inputmode="decimal"><small>+ entrata · − uscita</small>
-        <div class="quick-account-field"><label for="quick-opening">Disponibilità iniziale</label><input id="quick-opening" name="opening" inputmode="decimal"></div>
-        <div class="quick-account-field"><label for="quick-rate">Rendimento annuo %</label><input id="quick-rate" name="annualRate" inputmode="decimal"></div>
+        <label for="quick-flow">Flusso mensile</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal"><small>+ entrata · − uscita</small>
+        <div class="quick-account-field"><label for="quick-opening">Disponibilità iniziale</label><input id="quick-opening" data-private-input name="opening" inputmode="decimal"></div>
+        <div class="quick-account-field"><label for="quick-rate">Rendimento annuo %</label><input id="quick-rate" data-private-input name="annualRate" inputmode="decimal"></div>
       </div>
-      <div id="quick-transfer-fields" hidden><p id="quick-transfer-route"></p><label for="quick-transfer-value">Importo mensile</label><input id="quick-transfer-value" name="transferValue" inputmode="decimal"></div>
+      <div id="quick-transfer-fields" hidden><p id="quick-transfer-route"></p><label for="quick-transfer-value">Importo mensile</label><input id="quick-transfer-value" data-private-input name="transferValue" inputmode="decimal"></div>
       <button class="primary-button" type="submit">Applica</button>
     </form>
   </div>
