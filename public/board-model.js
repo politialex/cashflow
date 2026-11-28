@@ -1,3 +1,5 @@
+import { currentMonth, formatMonth, monthIndex, occurrence, occurrenceAmount, readSchedule } from './flow-calendar.js';
+
 const MAX_CENTS = 999_999_999;
 const MAX_MONTHS = 120;
 const FREQUENCIES = new Set(['monthly', 'annual', 'once']);
@@ -112,49 +114,81 @@ function transfersInFlowOrder(nodes, transfers) {
     .map(({ transfer }) => transfer);
 }
 
-export function simulateBoard(board, months) {
+export function simulateBoard(board, months, startMonth = null) {
   validateBoard(board, months);
+  const first = monthIndex(startMonth ?? currentMonth());
+  if (first + months > 10000 * 12) throw new RangeError('La simulazione supera il calendario disponibile.');
 
-  const monthlyRates = board.nodes.map(({ annualRate }) => Math.expm1(Math.log1p(annualRate / 100) / 12));
-  const orderedTransfers = transfersInFlowOrder(board.nodes, board.transfers);
-  let openings = board.nodes.map(({ openingCents }) => openingCents);
+  const financialNodes = board.nodes.map(({ id, openingCents, annualRate, monthlyInCents, monthlyOutCents, schedule }) =>
+    ({ id, openingCents, annualRate, monthlyInCents, monthlyOutCents, schedule: readSchedule(schedule) }));
+  const orderedTransfers = transfersInFlowOrder(financialNodes, board.transfers).map((transfer) => {
+    const schedule = readSchedule(transfer.schedule);
+    if (schedule?.installments && transfer.mode === 'percent') {
+      throw new RangeError('Le rate annuali richiedono un bonifico di importo fisso.');
+    }
+    return { ...transfer, schedule };
+  });
+  const monthlyRates = financialNodes.map(({ annualRate }) => Math.expm1(Math.log1p(annualRate / 100) / 12));
+  let openings = financialNodes.map(({ openingCents }) => openingCents);
   const periods = [];
 
   for (let month = 1; month <= months; month += 1) {
-    const nodes = board.nodes.map((node, index) => ({
-      id: node.id,
-      opening: openings[index],
-      inflow: node.monthlyInCents,
-      outflow: node.monthlyOutCents,
-      interest: 0,
-      balance: 0,
+    const index = first + month - 1;
+    const nodes = financialNodes.map((node, nodeIndex) => ({
+      id: node.id, opening: openings[nodeIndex], inflow: 0, outflow: 0, interest: 0, balance: 0,
     }));
     const nodesById = new Map(nodes.map((node) => [node.id, node]));
-
+    const days = new Map();
+    function addEvent(day, event) {
+      if (!days.has(day)) days.set(day, []);
+      days.get(day).push(event);
+    }
+    for (const node of financialNodes) {
+      const event = occurrence(node.schedule, index);
+      if (!event || (!node.monthlyInCents && !node.monthlyOutCents)) continue;
+      addEvent(event.day, { kind: 'flow', id: node.id,
+        inflow: occurrenceAmount(node.monthlyInCents, event), outflow: occurrenceAmount(node.monthlyOutCents, event) });
+    }
     for (const transfer of orderedTransfers) {
-      if (!transferOccurs(transfer.frequency, month)) {
-        continue;
-      }
-
-      const origin = nodesById.get(transfer.from);
-      const destination = nodesById.get(transfer.to);
-      const amount = transfer.mode === 'fixed'
-        ? transfer.amountCents
-        : roundCents(origin.inflow * transfer.percent / 100);
-      origin.outflow = checkedCents(origin.outflow + amount);
-      destination.inflow = checkedCents(destination.inflow + amount);
+      const event = transfer.schedule
+        ? occurrence(transfer.schedule, index)
+        : transferOccurs(transfer.frequency, month) ? { day: 1, installment: null } : null;
+      if (event) addEvent(event.day, { kind: 'transfer', transfer, event });
     }
 
-    openings = nodes.map((node, index) => {
-      const closingBeforeInterest = checkedCents(node.opening + (node.inflow - node.outflow));
-      if (closingBeforeInterest > 0) {
-        node.interest = roundCents(closingBeforeInterest * monthlyRates[index]);
+    const timeline = [];
+    for (const day of [...days.keys()].sort((a, b) => a - b)) {
+      for (const record of days.get(day)) {
+        if (record.kind === 'flow') {
+          const node = nodesById.get(record.id);
+          node.inflow = checkedCents(node.inflow + record.inflow);
+          node.outflow = checkedCents(node.outflow + record.outflow);
+          if (startMonth) timeline.push({ day, ...record, balance: checkedCents(node.opening + (node.inflow - node.outflow)) });
+        } else {
+          const { transfer, event } = record;
+          const origin = nodesById.get(transfer.from);
+          const destination = nodesById.get(transfer.to);
+          const amount = transfer.mode === 'fixed'
+            ? occurrenceAmount(transfer.amountCents, event)
+            : roundCents(origin.inflow * transfer.percent / 100);
+          origin.outflow = checkedCents(origin.outflow + amount);
+          destination.inflow = checkedCents(destination.inflow + amount);
+          if (startMonth) timeline.push({ day, kind: 'transfer', id: transfer.id,
+            from: transfer.from, to: transfer.to, amount,
+            fromBalance: checkedCents(origin.opening + (origin.inflow - origin.outflow)),
+            toBalance: checkedCents(destination.opening + (destination.inflow - destination.outflow)) });
+        }
       }
+    }
+
+    openings = nodes.map((node, nodeIndex) => {
+      const closingBeforeInterest = checkedCents(node.opening + (node.inflow - node.outflow));
+      if (closingBeforeInterest > 0) node.interest = roundCents(closingBeforeInterest * monthlyRates[nodeIndex]);
       node.balance = checkedCents(closingBeforeInterest + node.interest);
       return node.balance;
     });
 
-    periods.push({ month, nodes });
+    periods.push(startMonth ? { month, date: formatMonth(index), nodes, timeline } : { month, nodes });
   }
 
   return periods;

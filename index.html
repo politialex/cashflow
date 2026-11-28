@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=account-accordion">
-  <script src="./public/app.js?v=account-accordion" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=calendar-projection">
+  <script src="./public/app.js?v=calendar-projection" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -117,7 +117,7 @@
 
   <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">
     <div class="dialog-heading"><div><span class="eyebrow">Proiezione</span><h2 id="simulation-heading">Simulazione</h2></div><button id="close-simulation" type="button" aria-label="Chiudi">×</button></div>
-    <form id="simulation-form" class="simulation-form"><div class="field"><label for="projection-length">Orizzonte in mesi</label><input id="projection-length" name="months" type="number" min="1" max="120" value="12" required></div><button class="primary-button" type="submit">Calcola</button></form>
+    <form id="simulation-form" class="simulation-form"><div class="field"><label for="projection-start">Mese iniziale</label><input id="projection-start" name="startMonth" type="month" required></div><div class="field"><label for="projection-length">Orizzonte in mesi</label><input id="projection-length" name="months" type="number" min="1" max="120" value="12" required></div><button class="primary-button" type="submit">Calcola</button></form>
     <div class="projection-header"><p id="simulation-status" role="status"></p><div class="field"><label for="projection-month">Periodo</label><select id="projection-month" disabled></select></div></div>
     <div class="table-scroll" role="region" aria-label="Risultati" tabindex="0"><table><thead><tr><th scope="col">Elemento</th><th scope="col">Inizio</th><th scope="col">Entrate</th><th scope="col">Uscite</th><th scope="col">Rendimento</th><th scope="col">Disponibilità</th></tr></thead><tbody id="projection-rows"></tbody></table></div>
   </dialog>

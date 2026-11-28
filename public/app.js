@@ -1,4 +1,5 @@
 import { simulateBoard } from './board-model.js';
+import { currentMonth } from './flow-calendar.js';
 
 const storageKey = 'cashflow-studio.board.v1';
 const cameraKey = 'cashflow-studio.camera.v1';
@@ -35,6 +36,8 @@ let camera = { x: 0, y: 0, zoom: 1 };
 let cameraRestored = false;
 let selected = null;
 let horizon = 12;
+let projectionStart = currentMonth();
+get('projection-start').value = projectionStart;
 let drag = null;
 let connection = null;
 let connectFrom = null;
@@ -136,7 +139,7 @@ function save() {
 
 function commit(next, nextSelection, message, record = true) {
   try {
-    simulateBoard(next, horizon);
+    simulateBoard(next, horizon, projectionStart);
   } catch (error) {
     writeStatus(error.message);
     return false;
@@ -394,7 +397,7 @@ function updateSelection(selection) {
   for (const item of get('node-list').querySelectorAll('.node-list-item')) {
     item.setAttribute('aria-pressed', String(isNodeSelected(item.dataset.id)));
   }
-  const firstMonth = simulateBoard(board, 1)[0];
+  const firstMonth = simulateBoard(board, 1, projectionStart)[0];
   renderInspector(firstMonth);
   drawEdges(firstMonth);
 }
@@ -459,7 +462,7 @@ function moveNodeDrag(event, node) {
   const dx = (event.clientX - drag.startX) / camera.zoom;
   const dy = (event.clientY - drag.startY) / camera.zoom;
   if (!drag.firstMonth && Math.hypot(dx, dy) < 3) return;
-  drag.firstMonth ??= simulateBoard(board, 1)[0];
+  drag.firstMonth ??= simulateBoard(board, 1, projectionStart)[0];
   drag.nodes = moveNodes(drag.selection, dx, dy);
   const positions = new Map(drag.nodes.map((item) => [item.id, item]));
   for (const card of nodesLayer.children) {
@@ -705,13 +708,13 @@ function drawProjection(periods, monthNumber) {
 }
 
 function render() {
-  const periods = simulateBoard(board, horizon);
+  const periods = simulateBoard(board, horizon, projectionStart);
   renderBoard(periods[0]);
   renderInspector(periods[0]);
   renderNodeList(periods[0]);
   const projectionMonth = get('projection-month');
   const activeMonth = Math.min(Number(projectionMonth.value) || horizon, horizon);
-  projectionMonth.replaceChildren(...periods.map(({ month }) => new Option('Mese ' + month, month)));
+  projectionMonth.replaceChildren(...periods.map(({ month, date }) => new Option('Mese ' + month + ' · ' + date, month)));
   projectionMonth.value = activeMonth;
   projectionMonth.disabled = board.nodes.length === 0;
   drawProjection(periods, activeMonth);
@@ -791,7 +794,7 @@ function finishConnection(clientX, clientY) {
   const target = targetElement && board.nodes.find(({ id }) => id === targetElement.dataset.id);
   connection = null;
   if (!target || target.id === origin.id) {
-    drawEdges(simulateBoard(board, 1)[0]);
+    drawEdges(simulateBoard(board, 1, projectionStart)[0]);
     if (!target && hit?.closest('#board-viewport') && !hit.closest('.edge-group')) {
       nodesLayer.querySelector('[data-id="' + CSS.escape(origin.id) + '"]').focus({ preventScroll: true });
       openNewNode(clientX, clientY, origin);
@@ -843,7 +846,7 @@ viewport.addEventListener('pointermove', (event) => {
     return;
   }
   if (connection) {
-    drawEdges(simulateBoard(board, 1)[0], screenToWorld(event.clientX, event.clientY));
+    drawEdges(simulateBoard(board, 1, projectionStart)[0], screenToWorld(event.clientX, event.clientY));
     return;
   }
   if (drag?.kind !== 'canvas') return;
@@ -1082,10 +1085,19 @@ get('open-simulation').addEventListener('click', () => simulation.showModal());
 get('close-simulation').addEventListener('click', () => simulation.close());
 get('simulation-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  horizon = Number(new FormData(event.currentTarget).get('months'));
-  render();
+  const fields = new FormData(event.currentTarget);
+  const months = Number(fields.get('months'));
+  const start = String(fields.get('startMonth'));
+  try {
+    simulateBoard(board, months, start);
+    horizon = months;
+    projectionStart = start;
+    render();
+  } catch (error) {
+    get('simulation-status').textContent = error.message;
+  }
 });
-get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon), Number(get('projection-month').value)));
+get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon, projectionStart), Number(get('projection-month').value)));
 
 document.addEventListener('keydown', (event) => {
   if (event.target.matches('input, select, textarea') || quickEditor.matches(':popover-open')) return;
