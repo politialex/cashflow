@@ -153,7 +153,7 @@ h3 { font-size: .76rem; }
 .node-rate { grid-column: 2; grid-row: 2; align-self: center; color: var(--node-color); font-family: "Noto Sans Mono", ui-monospace, monospace; font-size: .64rem; font-weight: 700; }
 .compact-node .node-type { margin: 0; font-size: .56rem; }.compact-node .node-title { font-size: .8rem; }.compact-node .node-balance { grid-column: auto; margin: 4px 0 0; font-size: .86rem; }.compact-node .node-caption { display: none; }
 .node-port { position: absolute; z-index: 3; width: 13px; height: 13px; padding: 0; background: var(--canvas); border: 2px solid var(--node-color); border-radius: 50%; opacity: 0; transform: translate(-50%, -50%); transition: opacity .12s, transform .12s; }
-.board-node:hover .node-port, .board-node[aria-selected="true"] .node-port, .connect-mode .node-port { opacity: 1; }
+.node-port:focus-visible, .board-node:hover .node-port, .board-node[aria-selected="true"] .node-port, .connect-mode .node-port { opacity: 1; }
 .node-port:hover { background: var(--accent); border-color: var(--accent); transform: translate(-50%, -50%) scale(1.3); }
 .port-top { top: 0; left: 50%; }.port-right { top: 50%; left: 100%; }.port-bottom { top: 100%; left: 50%; }.port-left { top: 50%; left: 0; }
 
@@ -211,6 +211,7 @@ dialog, [popover] { color: var(--text); background: #1c1c1c; border: 1px solid v
 dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdrop-filter: blur(5px); }
 .dialog-heading, .quick-heading { display: flex; align-items: start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
 .dialog-heading > button, .quick-heading > button { width: 32px; height: 32px; padding: 0; font-size: 1.15rem; }
+.small-dialog.is-anchored { inset: auto; margin: 0; }
 .small-dialog { width: min(540px, calc(100% - 24px)); padding: 18px; }
 .node-type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .node-type-grid button { display: grid; gap: 5px; min-height: 78px; padding: 13px; text-align: left; box-shadow: 0 1px 0 #ffffff08 inset; }.node-type-grid strong { font-size: .82rem; }.node-type-grid span { color: var(--muted); font-size: .67rem; }
