@@ -12,6 +12,7 @@ const resources = new Map([
   ['/public/app.js', ['public/app.js', 'text/javascript']],
   ['/public/board-model.js', ['public/board-model.js', 'text/javascript']],
   ['/public/flow-calendar.js', ['public/flow-calendar.js', 'text/javascript']],
+  ['/public/board-storage.js', ['public/board-storage.js', 'text/javascript']],
 ]);
 
 const server = createServer(async (request, response) => {

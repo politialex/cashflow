@@ -15,10 +15,11 @@
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <span>Cashflow <span>Studio</span></span>
     </a>
-    <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> Salvato nel browser</span></div>
+    <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> <span id="storage-state" role="status">Caricamento…</span></span></div>
     <div class="header-actions">
+      <button id="toggle-privacy" type="button" aria-pressed="false">Privacy</button>
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
-      <button id="toggle-inspector" type="button" aria-controls="inspector" aria-expanded="false">Dettagli</button>
+      <button id="open-backup" type="button" aria-haspopup="dialog" aria-controls="backup">Backup</button>
     </div>
   </header>
 
@@ -27,7 +28,7 @@
       <aside id="nodes-panel" class="nodes-panel" aria-labelledby="nodes-heading" hidden>
         <div class="panel-heading">
           <div><span class="eyebrow">Mappa</span><h1 id="nodes-heading">Elementi</h1></div>
-          <button id="panel-add-node" class="icon-button" type="button" aria-label="Aggiungi nodo">+</button>
+          <button id="panel-add-node" class="icon-button" type="button" aria-label="Aggiungi nodo" aria-haspopup="dialog" aria-controls="new-node-dialog">+</button>
         </div>
         <p id="node-list-empty" class="empty-copy">Aggiungi conti, entrate e spese. Compariranno qui.</p>
         <div id="node-list" class="node-list"></div>
@@ -51,7 +52,7 @@
           <output id="zoom-level" aria-label="Livello di zoom">100%</output>
         </div>
         <div class="board-tools">
-          <button id="add-node" class="primary-button" type="button">Aggiungi</button>
+          <button id="add-node" class="primary-button" type="button" aria-haspopup="dialog" aria-controls="new-node-dialog">Aggiungi</button>
           <button id="add-transfer" type="button">Collega</button>
           <button id="load-example" type="button">Scenario demo</button>
           <span class="tool-divider" aria-hidden="true"></span>
@@ -59,60 +60,66 @@
         </div>
       </div>
 
-      <aside id="inspector" class="inspector" aria-labelledby="inspector-heading">
-        <div class="panel-heading"><div><span class="eyebrow">Selezione</span><h2 id="inspector-heading">Dettagli</h2></div></div>
-        <p id="inspector-empty" class="empty-copy">Seleziona un elemento o una freccia. Con il doppio click puoi modificare i dati direttamente sulla board.</p>
-        <form id="node-form" class="editor" hidden>
-          <div class="field"><label for="node-name">Nome</label><input id="node-name" name="name" type="text" maxlength="60" required></div>
-          <div class="field"><label for="node-provider">Fornitore</label><input id="node-provider" name="provider" type="text" maxlength="60"></div>
-          <div class="field"><label for="node-type">Tipo</label><select id="node-type" name="type" required>
-            <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
-          </select></div>
-          <div class="field account-only"><label for="node-opening">Saldo iniziale</label><div class="input-affix"><span>€</span><input id="node-opening" name="opening" type="text" inputmode="decimal" required></div></div>
-          <div class="field"><label for="node-flow">Flusso mensile</label><div class="input-affix"><span>€</span><input id="node-flow" name="flow" type="text" inputmode="decimal" aria-describedby="flow-help" required></div><p id="flow-help" class="field-help">Usa + per un’entrata e − per un’uscita.</p></div>
-          <div class="field account-only"><label for="node-rate">Rendimento annuo</label><div class="input-affix suffix"><input id="node-rate" name="annualRate" type="text" inputmode="decimal" required><span>%</span></div></div>
-          <section class="summary" aria-labelledby="node-summary-heading"><h3 id="node-summary-heading">Mese 1</h3><div id="node-summary" class="form-summary"></div></section>
-          <div class="editor-actions"><button class="primary-button" type="submit">Salva</button><button id="delete-node" class="danger-button" type="button">Elimina</button></div>
-        </form>
-        <form id="transfer-form" class="editor" hidden>
-          <div class="connection-summary"><span id="transfer-from-label"></span><span aria-hidden="true">→</span><span id="transfer-to-label"></span></div>
-          <input id="transfer-from" name="from" type="hidden"><input id="transfer-to" name="to" type="hidden">
-          <div class="field"><label for="transfer-mode">Movimento</label><select id="transfer-mode" name="mode" required><option value="fixed">Importo fisso</option><option value="percent">Percentuale delle entrate</option></select></div>
-          <div class="field"><label for="transfer-value">Valore</label><input id="transfer-value" name="value" type="text" inputmode="decimal" required></div>
-          <div class="field"><label for="transfer-frequency">Frequenza</label><select id="transfer-frequency" name="frequency" required><option value="monthly">Ogni mese</option><option value="annual">Ogni anno</option><option value="once">Una volta</option></select></div>
-          <div class="editor-actions"><button class="primary-button" type="submit">Salva</button><button id="delete-transfer" class="danger-button" type="button">Elimina</button></div>
-        </form>
-      </aside>
     </section>
   </main>
 
-  <div id="quick-editor" popover="manual" aria-labelledby="quick-title">
+  <div id="quick-editor" class="context-popover" popover="manual" role="dialog" aria-labelledby="quick-title">
     <form id="quick-form">
-      <div class="quick-heading"><strong id="quick-title">Modifica</strong><button id="close-quick-editor" type="button" aria-label="Chiudi">×</button></div>
+      <div class="quick-heading"><h2 id="quick-title">Modifica</h2><button id="close-quick-editor" type="button" aria-label="Chiudi editor">×</button></div>
       <div id="quick-node-fields">
-        <label for="quick-name">Nome</label><input id="quick-name" name="name" maxlength="60">
-        <label for="quick-provider">Fornitore</label><input id="quick-provider" name="provider" maxlength="60">
-        <label for="quick-flow">Flusso mensile</label><input id="quick-flow" name="flow" inputmode="decimal"><small>+ entrata · − uscita</small>
-        <div class="quick-account-field"><label for="quick-opening">Disponibilità iniziale</label><input id="quick-opening" name="opening" inputmode="decimal"></div>
-        <div class="quick-account-field"><label for="quick-rate">Rendimento annuo %</label><input id="quick-rate" name="annualRate" inputmode="decimal"></div>
+        <div class="field"><label for="quick-name">Nome</label><input id="quick-name" name="name" maxlength="60"></div>
+        <div class="field"><label for="quick-provider">Fornitore</label><input id="quick-provider" name="provider" maxlength="60"></div>
+        <div class="field"><label for="quick-type">Tipo</label><select id="quick-type" name="type">
+          <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
+        </select></div>
+        <div class="quick-account-field field"><label for="quick-opening">Saldo iniziale (€)</label><input id="quick-opening" data-private-input name="opening" inputmode="decimal"></div>
+        <div class="field"><label for="quick-flow">Flusso mensile (€)</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
+        <div class="quick-account-field field"><label for="quick-rate">Rendimento annuo (%)</label><input id="quick-rate" data-private-input name="annualRate" inputmode="decimal"></div>
+        <details class="summary"><summary>Riepilogo del mese 1</summary><div id="quick-node-summary" class="form-summary"></div></details>
       </div>
-      <div id="quick-transfer-fields" hidden><p id="quick-transfer-route"></p><label for="quick-transfer-value">Importo mensile</label><input id="quick-transfer-value" name="transferValue" inputmode="decimal"></div>
-      <button class="primary-button" type="submit">Applica</button>
+      <div id="quick-transfer-fields" hidden>
+        <p id="quick-transfer-route" class="connection-summary"></p>
+        <div class="field"><label for="quick-transfer-mode">Movimento</label><select id="quick-transfer-mode" name="mode"><option value="fixed">Importo fisso</option><option value="percent">Percentuale delle entrate</option></select></div>
+        <div class="field"><label for="quick-transfer-value">Valore</label><input id="quick-transfer-value" data-private-input name="value" inputmode="decimal"></div>
+        <div class="field"><label for="quick-transfer-frequency">Frequenza</label><select id="quick-transfer-frequency" name="frequency"><option value="monthly">Ogni mese</option><option value="annual">Ogni anno</option><option value="once">Una volta</option></select></div>
+      </div>
+      <p id="quick-error" role="alert"></p>
+      <button id="quick-delete" class="danger-button" type="button">Elimina</button>
     </form>
   </div>
 
-  <dialog id="new-node-dialog" class="small-dialog" aria-labelledby="new-node-title">
+  <div id="new-node-dialog" class="context-popover" popover="manual" role="dialog" aria-labelledby="new-node-title">
     <form id="new-node-form">
-      <div class="dialog-heading"><div><span class="eyebrow">Nuovo elemento</span><h2 id="new-node-title">Cosa vuoi aggiungere?</h2></div><button id="close-new-node" type="button" aria-label="Chiudi">×</button></div>
-      <div class="node-type-grid">
-        <button type="submit" name="type" value="bank"><strong>Conto</strong><span>Saldo e movimenti</span></button>
-        <button type="submit" name="type" value="deposit"><strong>Deposito</strong><span>Saldo e rendimento</span></button>
-        <button type="submit" name="type" value="investment"><strong>Investimento</strong><span>Capitale e rendimento</span></button>
-        <button type="submit" name="type" value="savings"><strong>Risparmio</strong><span>Disponibilità accantonata</span></button>
-        <button type="submit" name="type" value="source"><strong>Entrata</strong><span>Stipendio o altra fonte</span></button>
-        <button type="submit" name="type" value="expense"><strong>Spesa</strong><span>Ricorrente o una tantum</span></button>
+      <div class="quick-heading"><h2 id="new-node-title">Cosa vuoi aggiungere?</h2><button id="close-new-node" type="button" aria-label="Chiudi selettore">×</button></div>
+      <div class="node-chooser-content">
+        <div class="node-type-grid">
+          <button type="submit" name="type" value="bank"><span class="type-icon" aria-hidden="true">▤</span><span><strong>Conto</strong><small>Saldo e movimenti</small></span></button>
+          <button type="submit" name="type" value="deposit"><span class="type-icon" aria-hidden="true">▣</span><span><strong>Deposito</strong><small>Saldo e rendimento</small></span></button>
+          <button type="submit" name="type" value="investment"><span class="type-icon" aria-hidden="true">↗</span><span><strong>Investimento</strong><small>Capitale e rendimento</small></span></button>
+          <button type="submit" name="type" value="savings"><span class="type-icon" aria-hidden="true">◇</span><span><strong>Risparmio</strong><small>Disponibilità accantonata</small></span></button>
+          <button type="submit" name="type" value="source"><span class="type-icon" aria-hidden="true">+</span><span><strong>Entrata</strong><small>Stipendio o altra fonte</small></span></button>
+          <button type="submit" name="type" value="expense"><span class="type-icon" aria-hidden="true">−</span><span><strong>Spesa</strong><small>Uscita mensile</small></span></button>
+        </div>
+        <div id="new-node-preview" aria-hidden="true"></div>
       </div>
     </form>
+  </div>
+
+  <dialog id="backup" class="small-dialog" aria-labelledby="backup-heading">
+    <div class="dialog-heading">
+      <h2 id="backup-heading">Backup della board</h2>
+      <button id="close-backup" type="button" aria-label="Chiudi backup">×</button>
+    </div>
+    <div class="editor">
+      <div class="editor-actions"><button id="export-backup" type="button">Scarica backup JSON</button></div>
+      <div class="field">
+        <label for="backup-file">Scegli un file di backup JSON</label>
+        <input id="backup-file" type="file" accept=".json,application/json" aria-describedby="backup-help">
+        <p id="backup-help" class="field-help">Il ripristino sostituisce la board corrente. Scarica prima una copia se vuoi conservarla.</p>
+      </div>
+      <div class="editor-actions"><button id="restore-backup" class="primary-button" type="button" disabled>Ripristina board</button></div>
+      <p id="backup-status" class="field-help" role="status"></p>
+    </div>
   </dialog>
 
   <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">

@@ -25,7 +25,9 @@ Lo scenario di esempio separa lo stipendio tra un conto principale, un conto per
 - Dopo i flussi, il saldo positivo riceve il rendimento mensile composto equivalente al tasso annuo. Gli importi vengono arrotondati al centesimo. I trasferimenti fissi possono generare saldi negativi, visibili nella board e nella simulazione.
 - Imposte, commissioni, volatilità e conversioni di valuta richiedono ipotesi esterne. Le categorie dei nodi aiutano a organizzare lo scenario e usano le stesse regole di calcolo.
 
-La v2 salva una board separata. Le registrazioni della v1 restano nel browser e possono essere consultate eseguendo il pacchetto v1 sullo stesso indirizzo da cui erano state inserite.
+Cashflow Studio salva le modifiche alla board in IndexedDB, con ripiego su localStorage quando IndexedDB non è disponibile. Al primo avvio importa il salvataggio precedente dello stesso sito. L’inquadratura si conserva separatamente.
+
+Usa **Backup** nell’intestazione per scaricare un JSON della board o per scegliere un file e ripristinarlo. Il file resta sul dispositivo e contiene gli importi e i dati della board. Il ripristino sostituisce la board dopo la convalida del file e azzera la cronologia di annullamento della sessione. Un backup invalido lascia intatta la board. Puoi scaricare il backup dell’ultima board aperta anche se il browser blocca il salvataggio automatico.
 
 ## Avvio locale e verifiche
 
