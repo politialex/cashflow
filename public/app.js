@@ -11,6 +11,7 @@ const types = {
 const accountTypes = new Set(['bank', 'deposit', 'investment', 'savings', 'cash']);
 const get = (id) => document.getElementById(id);
 const viewport = get('board-viewport');
+const workspace = viewport.closest('.workspace');
 const canvas = get('board-canvas');
 const nodesLayer = get('board-nodes');
 const edgesLayer = get('board-edges');
@@ -20,8 +21,9 @@ const simulation = get('simulation');
 const newNodeDialog = get('new-node-dialog');
 const quickEditor = get('quick-editor');
 const mobilePanels = matchMedia('(max-width: 900px)');
+const nodesPanel = get('nodes-panel');
 const panels = [
-  { element: get('nodes-panel'), button: get('toggle-nodes') },
+  { element: nodesPanel, button: get('toggle-nodes') },
   { element: get('inspector'), button: get('toggle-inspector') },
 ];
 const grid = 20;
@@ -41,6 +43,7 @@ let quickTarget = null;
 let history = [];
 let future = [];
 let storageReadable = true;
+let desktopNodesOpen = true;
 
 const money = (cents) => euro.format(cents / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
@@ -171,11 +174,17 @@ function redo() {
 }
 
 function updatePanels(openPanel = null) {
+  const mobile = mobilePanels.matches;
   for (const { element, button } of panels) {
-    const open = element.id === openPanel;
-    element.classList.toggle('panel-open', open);
-    button.setAttribute('aria-expanded', String(!mobilePanels.matches || open));
+    const open = mobile ? element.id === openPanel : element !== nodesPanel || desktopNodesOpen;
+    if (element === nodesPanel) {
+      if (!open && element.contains(document.activeElement)) button.focus();
+      element.hidden = !open;
+    }
+    element.classList.toggle('panel-open', mobile && open);
+    button.setAttribute('aria-expanded', String(open));
   }
+  workspace.classList.toggle('nodes-panel-closed', !mobile && !desktopNodesOpen);
 }
 
 function showInspector() {
@@ -722,7 +731,10 @@ viewport.addEventListener('dblclick', (event) => {
 });
 
 for (const { element, button } of panels) {
-  button.addEventListener('click', () => updatePanels(element.classList.contains('panel-open') ? null : element.id));
+  button.addEventListener('click', () => {
+    if (!mobilePanels.matches && element === nodesPanel) desktopNodesOpen = !desktopNodesOpen;
+    updatePanels(element.classList.contains('panel-open') ? null : element.id);
+  });
 }
 mobilePanels.addEventListener('change', () => updatePanels());
 updatePanels();
