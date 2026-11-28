@@ -1,5 +1,5 @@
 import { simulateBoard } from './board-model.js';
-import { currentMonth } from './flow-calendar.js';
+import { currentMonth, monthIndex } from './flow-calendar.js';
 import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-storage.js';
 
 const cameraKey = 'cashflow-studio.camera.v1';
@@ -74,6 +74,10 @@ let cameraRestored = false;
 let selected = null;
 let horizon = 12;
 let projectionStart = currentMonth();
+let canvasProjection = null;
+let canvasSimStart = projectionStart;
+let canvasTargets = [];
+let canvasTargetIndex = 0;
 get('projection-start').value = projectionStart;
 let drag = null;
 let connection = null;
@@ -630,8 +634,9 @@ function startConnection(event, node, side) {
 }
 
 function renderBoard(firstMonth) {
+  const displayedMonth = canvasProjection ?? firstMonth;
   get('board-empty').hidden = board.nodes.length > 0;
-  const results = new Map(firstMonth.nodes.map((result) => [result.id, result]));
+  const results = new Map(displayedMonth.nodes.map((result) => [result.id, result]));
   const cards = board.nodes.map((node) => {
     const result = results.get(node.id);
     const account = nodeIsAccount(node);
@@ -650,7 +655,9 @@ function renderBoard(firstMonth) {
     if (provider) metadata.title = provider;
     card.append(metadata, createText('node-title', node.name), balance);
     if (account) {
-      card.append(createText('node-caption', 'Disponibilità'));
+      const date = displayedMonth.date;
+      card.append(createText('node-caption', canvasProjection ? 'Proiezione · ' + date : 'Disponibilità'));
+      card.toggleAttribute('data-projected', Boolean(canvasProjection));
       if (node.annualRate) card.append(createAmount('node-rate', percent.format(node.annualRate) + '% annuo'));
     } else {
       card.append(createText('node-caption', signedFlow(node) >= 0 ? 'Entrata mensile' : 'Uscita mensile'));
@@ -701,7 +708,7 @@ function renderBoard(firstMonth) {
     return card;
   });
   nodesLayer.replaceChildren(...cards);
-  drawEdges(firstMonth);
+  drawEdges(displayedMonth);
 }
 
 function setValues(form, values) {
@@ -844,9 +851,10 @@ function drawProjection(periods, selection) {
 }
 
 function render() {
+  calculateCanvasProjection();
   const periods = simulateBoard(board, horizon, projectionStart);
   renderBoard(periods[0]);
-  renderNodeList(periods[0]);
+  renderNodeList(canvasProjection ?? periods[0]);
   const projectionMonth = get('projection-month');
   const previous = projectionMonth.value;
   const years = new Set(periods.map(({ date }) => date.slice(0, 4)));
@@ -1454,6 +1462,9 @@ async function changeScenario(operation, replaceBoard = true) {
   try {
     await operation();
     if (replaceBoard) {
+      canvasProjection = null;
+      canvasSim.hidden = true;
+      canvasSimButton.setAttribute('aria-expanded', 'false');
       board = boardStorage.board;
       history = [];
       future = [];
@@ -1585,7 +1596,135 @@ get('load-example').addEventListener('click', () => {
   void changeScenario(() => boardStorage.createScenario('Scenario demo', { nodes: [salary, bank, bills, deposit, investment], transfers }));
 });
 
-get('open-simulation').addEventListener('click', () => simulation.showModal());
+const canvasSim = get('canvas-simulation');
+const canvasSimButton = get('open-simulation');
+const targetList = get('canvas-sim-targets');
+
+function calculateCanvasProjection() {
+  const target = canvasTargets[canvasTargetIndex];
+  canvasProjection = null;
+  const status = get('canvas-sim-status');
+  status.textContent = '';
+  get('add-simulation-period').disabled = true;
+  if (canvasSim.hidden) return;
+  if (target && canvasSimStart) {
+    try {
+      const months = monthIndex(target) - monthIndex(canvasSimStart) + 1;
+      if (months < 1 || months > 120) throw new RangeError('Scegli un mese tra quello iniziale e i 119 successivi.');
+      canvasProjection = simulateBoard(board, months, canvasSimStart).at(-1);
+      status.textContent = 'Sulla board: proiezione al ' + target + '.';
+      get('add-simulation-period').disabled = false;
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  } else {
+    status.textContent = 'Scegli il mese di arrivo.';
+  }
+}
+
+function renderCanvasTargets(focusIndex = null) {
+  targetList.replaceChildren(...canvasTargets.map((date, index) => {
+    const row = document.createElement('div');
+    row.className = 'canvas-sim-target';
+    const field = document.createElement('div');
+    field.className = 'field';
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'month';
+    input.id = 'canvas-target-' + index;
+    input.value = date;
+    label.htmlFor = input.id;
+    label.textContent = index === 0 ? '→ Mese di arrivo' : 'Mese di arrivo ' + (index + 1);
+    input.addEventListener('change', () => {
+      canvasTargets[index] = input.value;
+      canvasTargetIndex = index;
+      for (const [i, button] of [...targetList.querySelectorAll('[data-show-target]')].entries()) {
+        button.setAttribute('aria-pressed', String(i === index));
+        button.disabled = !canvasTargets[i];
+      }
+      render();
+    });
+    field.append(label, input);
+    const show = document.createElement('button');
+    show.type = 'button';
+    show.dataset.showTarget = '';
+    show.textContent = 'Mostra';
+    show.disabled = !date;
+    show.setAttribute('aria-label', 'Mostra proiezione ' + (index + 1) + ' sulla board');
+    show.setAttribute('aria-pressed', String(index === canvasTargetIndex));
+    show.addEventListener('click', () => {
+      canvasTargetIndex = index;
+      for (const item of targetList.querySelectorAll('[data-show-target]')) item.setAttribute('aria-pressed', String(item === show));
+      render();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', 'Rimuovi periodo ' + (index + 1));
+    remove.disabled = canvasTargets.length === 1;
+    remove.addEventListener('click', () => {
+      canvasTargets.splice(index, 1);
+      if (index < canvasTargetIndex) canvasTargetIndex -= 1;
+      else if (canvasTargetIndex >= canvasTargets.length) canvasTargetIndex = canvasTargets.length - 1;
+      renderCanvasTargets(canvasTargetIndex);
+      render();
+    });
+    row.append(field, show, remove);
+    return row;
+  }));
+  if (focusIndex !== null) get('canvas-target-' + focusIndex).focus();
+}
+
+function closeCanvasSimulation(restoreFocus = true) {
+  canvasSim.hidden = true;
+  canvasSimButton.setAttribute('aria-expanded', 'false');
+  canvasProjection = null;
+  if (restoreFocus) canvasSimButton.focus({ preventScroll: true });
+  render();
+}
+
+canvasSimButton.addEventListener('click', () => {
+  if (!canvasSim.hidden) {
+    closeCanvasSimulation();
+    return;
+  }
+  canvasSim.hidden = false;
+  canvasSimButton.setAttribute('aria-expanded', 'true');
+  canvasSimStart = currentMonth();
+  get('canvas-sim-start').value = canvasSimStart;
+  canvasTargets = [''];
+  canvasTargetIndex = 0;
+  renderCanvasTargets(0);
+  render();
+});
+get('close-canvas-simulation').addEventListener('click', () => closeCanvasSimulation());
+canvasSim.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeCanvasSimulation();
+});
+get('canvas-sim-start').addEventListener('change', (event) => {
+  canvasSimStart = event.currentTarget.value;
+  render();
+});
+get('add-simulation-period').addEventListener('click', () => {
+  canvasTargets.push('');
+  renderCanvasTargets(canvasTargets.length - 1);
+});
+get('simulation-details').addEventListener('click', () => {
+  if (canvasProjection) {
+    const months = monthIndex(canvasProjection.date) - monthIndex(canvasSimStart) + 1;
+    projectionStart = canvasSimStart;
+    horizon = months;
+    get('projection-start').value = projectionStart;
+    get('projection-length').value = horizon;
+    render();
+    get('projection-month').value = String(months);
+    drawProjection(simulateBoard(board, horizon, projectionStart), String(months));
+  }
+  simulation.showModal();
+});
 get('close-simulation').addEventListener('click', () => simulation.close());
 get('simulation-form').addEventListener('submit', (event) => {
   event.preventDefault();

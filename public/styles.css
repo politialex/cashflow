@@ -367,3 +367,11 @@ dialog { border-radius: 4px; } dialog::backdrop { background: #050505c4; backdro
 @media (max-width: 380px) {
   .brand > span:last-child { display: none; }
 }
+
+#canvas-simulation { position: absolute; z-index: 7; inset: auto auto calc(100% + 8px) 50%; width: min(360px, calc(100vw - 24px)); max-height: min(70dvh, 460px); overflow: auto; padding: 12px; transform: translateX(-50%); border: 1px solid var(--border-strong); border-radius: 4px; background: var(--panel); box-shadow: 0 8px 24px #0006; }
+#canvas-simulation .quick-heading { margin-bottom: 8px; }
+#canvas-sim-targets { display: grid; gap: 8px; margin: 8px 0; }
+.canvas-sim-target { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 4px; }
+.canvas-sim-target button { min-height: 36px; padding-inline: 7px; }
+.canvas-sim-target [aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -3px; }
+.board-node[data-projected] .node-caption { color: var(--accent); }

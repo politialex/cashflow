@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0d0d">
   <title>Cashflow Studio</title>
-  <link rel="stylesheet" href="./public/styles.css?v=node-link-gesture">
-  <script src="./public/app.js?v=node-link-gesture" type="module"></script>
+  <link rel="stylesheet" href="./public/styles.css?v=canvas-periods">
+  <script src="./public/app.js?v=canvas-periods" type="module"></script>
 </head>
 <body>
   <a class="skip-link" href="#board-viewport">Vai alla board</a>
@@ -74,7 +74,14 @@
         <div class="board-tools">
           <button id="add-node" class="primary-button" type="button" aria-haspopup="dialog" aria-controls="new-node-dialog"><span class="tool-icon" aria-hidden="true">＋</span>Aggiungi</button>
           <button id="add-transfer" type="button" aria-pressed="false"><span class="tool-icon" aria-hidden="true">→</span>Collega</button>
-          <button id="open-simulation" type="button" aria-haspopup="dialog" aria-controls="simulation"><span class="tool-icon" aria-hidden="true">▶</span>Simula</button>
+          <button id="open-simulation" type="button" aria-expanded="false" aria-controls="canvas-simulation"><span class="tool-icon" aria-hidden="true">▶</span>Simula</button>
+          <section id="canvas-simulation" aria-label="Simulazione sulla board" hidden>
+            <div class="quick-heading"><h2>Simulazione sulla board</h2><button id="close-canvas-simulation" type="button" aria-label="Chiudi simulazione sulla board">×</button></div>
+            <div class="field"><label for="canvas-sim-start">Da</label><input id="canvas-sim-start" type="month"></div>
+            <div id="canvas-sim-targets"></div>
+            <p id="canvas-sim-status" class="field-help" role="status"></p>
+            <div class="editor-actions"><button id="add-simulation-period" type="button">+ Simula periodo</button><button id="simulation-details" type="button" aria-haspopup="dialog" aria-controls="simulation">Dettagli</button></div>
+          </section>
         </div>
       </div>
 
