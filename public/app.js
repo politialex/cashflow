@@ -1,7 +1,8 @@
 import { simulateBoard } from './board-model.js';
+import { createBoardBackup, openBoardStorage, readBoardBackup } from './board-storage.js';
 
-const storageKey = 'cashflow-studio.board.v1';
 const cameraKey = 'cashflow-studio.camera.v1';
+const privacyKey = 'cashflow-studio.privacy.v1';
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
 const percent = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 });
 const types = {
@@ -19,6 +20,10 @@ const selectionBox = get('board-selection-box');
 const simulation = get('simulation');
 const newNodeDialog = get('new-node-dialog');
 const quickEditor = get('quick-editor');
+const backupDialog = get('backup');
+const backupFile = get('backup-file');
+const backupStatus = get('backup-status');
+const restoreBackupButton = get('restore-backup');
 const mobilePanels = matchMedia('(max-width: 900px)');
 const nodesPanel = get('nodes-panel');
 const toggleNodes = get('toggle-nodes');
@@ -37,8 +42,61 @@ let nodeDraft = null;
 let quickTarget = null;
 let history = [];
 let future = [];
-let storageReadable = true;
 let desktopNodesOpen = true;
+let saveRevision = 0;
+let backupRead = 0;
+let pendingBackup;
+let restoringBackup = false;
+let privacyMode = false;
+const displayedAmounts = new WeakMap();
+
+function writeAmount(element, text) {
+  displayedAmounts.set(element, text);
+  element.dataset.privateAmount = '';
+  element.textContent = privacyMode ? '••••' : text;
+}
+
+function createAmount(className, text) {
+  const element = createText(className, '');
+  writeAmount(element, text);
+  return element;
+}
+
+const privateInputs = [...document.querySelectorAll('[data-private-input]')].map((input) => {
+  const placeholder = createText('private-amount-placeholder', 'Valore nascosto');
+  input.after(placeholder);
+  return { input, placeholder };
+});
+const privacyButton = get('toggle-privacy');
+
+function applyPrivacyMode() {
+  privacyButton.setAttribute('aria-pressed', String(privacyMode));
+  document.querySelectorAll('[data-private-amount]').forEach((element) => {
+    element.textContent = privacyMode ? '••••' : displayedAmounts.get(element);
+  });
+  for (const { input, placeholder } of privateInputs) {
+    input.hidden = privacyMode;
+    input.readOnly = privacyMode;
+    placeholder.hidden = !privacyMode;
+  }
+}
+
+try {
+  privacyMode = sessionStorage.getItem(privacyKey) === 'on';
+} catch {
+  // Il controllo funziona anche in una pagina senza accesso allo storage.
+}
+applyPrivacyMode();
+
+privacyButton.addEventListener('click', () => {
+  privacyMode = !privacyMode;
+  applyPrivacyMode();
+  try {
+    sessionStorage.setItem(privacyKey, privacyMode ? 'on' : 'off');
+  } catch {
+    // La preferenza resta valida finché la pagina rimane aperta.
+  }
+});
 
 const money = (cents) => euro.format(cents / 100);
 const moneyInput = (cents) => (cents / 100).toFixed(2).replace('.', ',');
@@ -88,7 +146,7 @@ function writeStatus(message) {
 }
 
 function validateSavedBoard(value) {
-  simulateBoard(value, 1);
+  simulateBoard(value, horizon);
   for (const node of value.nodes) {
     if (typeof node.name !== 'string' || !Object.hasOwn(types, node.type)
       || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
@@ -98,12 +156,11 @@ function validateSavedBoard(value) {
   return { ...value, nodes: value.nodes.map((node) => ({ ...node, ...boundPosition(node.type, node.x, node.y) })) };
 }
 
-try {
-  const saved = localStorage.getItem(storageKey);
-  if (saved) board = validateSavedBoard(JSON.parse(saved));
-} catch {
-  storageReadable = false;
-  writeStatus('Il salvataggio del browser non è disponibile. Le modifiche restano in questa sessione.');
+const boardStorage = await openBoardStorage(validateSavedBoard);
+if (boardStorage.board) board = boardStorage.board;
+get('storage-state').textContent = boardStorage.readError ? 'Verifica il backup' : 'Salvato nel browser';
+if (boardStorage.readError) {
+  writeStatus('Non tutti i dati locali sono stati letti. Puoi ripristinare da un file di backup.');
 }
 
 try {
@@ -117,14 +174,27 @@ try {
   // Un’inquadratura illeggibile può essere sostituita senza perdere la board.
 }
 
-function save() {
-  if (!storageReadable) return false;
+async function saveBoard(value = board) {
+  const revision = ++saveRevision;
+  get('storage-state').textContent = 'Salvataggio…';
   try {
-    localStorage.setItem(storageKey, JSON.stringify(board));
-    localStorage.setItem(cameraKey, JSON.stringify(camera));
+    await boardStorage.save(value);
+    if (revision === saveRevision) get('storage-state').textContent = 'Salvato nel browser';
     return true;
   } catch {
+    if (revision === saveRevision) {
+      get('storage-state').textContent = 'Salvataggio non riuscito';
+      writeStatus('Le modifiche non sono state salvate. Scarica un backup per conservarle.');
+    }
     return false;
+  }
+}
+
+function saveCamera() {
+  try {
+    localStorage.setItem(cameraKey, JSON.stringify(camera));
+  } catch {
+    // L’inquadratura non impedisce il salvataggio della board.
   }
 }
 
@@ -142,7 +212,7 @@ function commit(next, nextSelection, message, record = true) {
   }
   board = { ...next, nodes: next.nodes.map((node) => ({ ...node, ...boundPosition(node.type, node.x, node.y) })) };
   selected = nextSelection;
-  save();
+  void saveBoard();
   render();
   writeStatus(message);
   return true;
@@ -153,7 +223,7 @@ function undo() {
   future.push(cloneBoard());
   board = history.pop();
   selected = null;
-  save();
+  void saveBoard();
   render();
   writeStatus('Modifica annullata.');
 }
@@ -163,7 +233,7 @@ function redo() {
   history.push(cloneBoard());
   board = future.pop();
   selected = null;
-  save();
+  void saveBoard();
   render();
   writeStatus('Modifica ripristinata.');
 }
@@ -194,7 +264,7 @@ function applyCamera() {
   viewport.style.setProperty('--grid-x', displayX % (grid * camera.zoom) + 'px');
   viewport.style.setProperty('--grid-y', displayY % (grid * camera.zoom) + 'px');
   get('zoom-level').value = Math.round(camera.zoom * 100) + '%';
-  save();
+  saveCamera();
 }
 
 function setZoom(nextZoom, clientX = viewport.getBoundingClientRect().left + viewport.clientWidth / 2,
@@ -322,7 +392,7 @@ function drawEdges(firstMonth, temporaryPoint = null, nodes = board.nodes) {
     const amount = transferAmount(transfer, firstMonth);
     const label = svgElement('text', { class: 'edge-label', x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 10, 'text-anchor': 'middle' });
     const cadence = { monthly: '/mese', annual: '/anno', once: ' una tantum' }[transfer.frequency];
-    label.textContent = money(Math.abs(amount)) + (cadence ?? '');
+    writeAmount(label, money(Math.abs(amount)) + (cadence ?? ''));
     group.append(label);
     group.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -491,7 +561,7 @@ function renderBoard(firstMonth) {
     setCardSelection(card, node.name);
     card.style.left = node.x + 'px';
     card.style.top = node.y + 'px';
-    const balance = createText('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node))));
+    const balance = createAmount('node-balance', account ? money(result.balance) : (signedFlow(node) >= 0 ? '+' : '−') + money(Math.abs(signedFlow(node))));
     if (account && result.balance !== 0) balance.classList.add(result.balance > 0 ? 'positive' : 'negative');
     const provider = providerName(node);
     const metadata = createText('node-type', provider ? types[node.type] + ' · ' + provider : types[node.type]);
@@ -499,7 +569,7 @@ function renderBoard(firstMonth) {
     card.append(metadata, createText('node-title', node.name), balance);
     if (account) {
       card.append(createText('node-caption', 'Disponibilità'));
-      if (node.annualRate) card.append(createText('node-rate', percent.format(node.annualRate) + '% annuo'));
+      if (node.annualRate) card.append(createAmount('node-rate', percent.format(node.annualRate) + '% annuo'));
     } else {
       card.append(createText('node-caption', signedFlow(node) >= 0 ? 'Entrata mensile' : 'Uscita mensile'));
     }
@@ -563,7 +633,7 @@ function renderEditorSummary(node) {
     const term = document.createElement('dt');
     const amount = document.createElement('dd');
     term.textContent = label;
-    amount.textContent = money(value);
+    writeAmount(amount, money(value));
     if (label === 'Disponibilità' && value !== 0) amount.className = value > 0 ? 'positive' : 'negative';
     details.append(term, amount);
   }
@@ -608,7 +678,7 @@ function renderNodeList(firstMonth) {
     item.setAttribute('aria-pressed', String(isNodeSelected(node.id)));
     if (label !== node.name) item.setAttribute('aria-label', label + ': ' + node.name);
     const result = results.get(node.id);
-    item.append(createText('list-name', label), createText('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
+    item.append(createText('list-name', label), createAmount('list-value', nodeIsAccount(node) ? money(result.balance) : money(Math.abs(signedFlow(node)))));
     item.addEventListener('click', () => {
       updateSelection({ kind: 'node', id: node.id });
       const size = nodeSize(node);
@@ -662,7 +732,7 @@ function drawProjection(periods, monthNumber) {
     row.append(name);
     for (const value of [result.opening, result.inflow, result.outflow, result.interest, result.balance]) {
       const cell = row.insertCell();
-      cell.textContent = money(value);
+      writeAmount(cell, money(value));
       if (value < 0) cell.className = 'negative';
     }
     return row;
@@ -729,7 +799,7 @@ function showNodePreview(button) {
   preview.replaceChildren(
     createText('preview-type', types[type]),
     createText('preview-title', button.querySelector('strong').textContent + ' di esempio'),
-    createText('preview-amount', money(account ? 120000 : type === 'source' ? 250000 : -50000)),
+    createAmount('preview-amount', money(account ? 120000 : type === 'source' ? 250000 : -50000)),
     createText('preview-caption', account ? 'Disponibilità' : type === 'source' ? 'Entrata mensile' : 'Uscita mensile'),
   );
 }
@@ -783,8 +853,8 @@ function openQuickEditor(kind, key, clientX = null, clientY = null) {
   const anchor = node || clientX === null ? rect : pointAnchor(clientX, clientY);
   placePopover(quickEditor, anchor);
   const input = get(node ? 'quick-name' : 'quick-transfer-value');
-  input.focus({ preventScroll: true });
-  input.select();
+  (input.hidden ? get('close-quick-editor') : input).focus({ preventScroll: true });
+  if (!input.hidden) input.select();
 }
 
 function closeQuickEditor(restoreFocus = true) {
@@ -957,7 +1027,7 @@ viewport.addEventListener('pointerup', (event) => {
   if (drag?.kind === 'canvas') {
     drag = null;
     viewport.classList.remove('is-panning');
-    save();
+    saveCamera();
   }
 });
 
@@ -1004,6 +1074,80 @@ updatePanels();
 get('zoom-in').addEventListener('click', () => setZoom(camera.zoom + .15));
 get('zoom-out').addEventListener('click', () => setZoom(camera.zoom - .15));
 get('fit-view').addEventListener('click', fitView);
+get('open-backup').addEventListener('click', () => {
+  pendingBackup = undefined;
+  backupFile.value = '';
+  backupStatus.textContent = '';
+  restoreBackupButton.disabled = true;
+  backupDialog.showModal();
+});
+get('close-backup').addEventListener('click', () => backupDialog.close());
+backupDialog.addEventListener('cancel', (event) => {
+  if (restoringBackup) event.preventDefault();
+});
+backupDialog.addEventListener('close', () => { backupRead += 1; });
+
+get('export-backup').addEventListener('click', () => {
+  const json = JSON.stringify(createBoardBackup(board), null, 2);
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'cashflow-studio-backup.json';
+  backupDialog.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+backupFile.addEventListener('change', async () => {
+  const read = ++backupRead;
+  const file = backupFile.files[0];
+  pendingBackup = undefined;
+  restoreBackupButton.disabled = true;
+  backupStatus.textContent = file ? 'Verifica del file…' : '';
+  if (!file) return;
+
+  try {
+    const restored = readBoardBackup(JSON.parse(await file.text()), validateSavedBoard);
+    if (read !== backupRead) return;
+    pendingBackup = restored;
+    restoreBackupButton.disabled = false;
+    backupStatus.textContent = 'Backup valido. Conferma per sostituire la board.';
+  } catch {
+    if (read !== backupRead) return;
+    backupStatus.textContent = 'File non valido o versione non supportata.';
+  }
+});
+
+restoreBackupButton.addEventListener('click', async () => {
+  if (!pendingBackup || restoringBackup) return;
+  restoringBackup = true;
+  const controls = [...backupDialog.querySelectorAll('button, input')];
+  for (const control of controls) control.disabled = true;
+  backupStatus.textContent = 'Ripristino…';
+  const saved = await saveBoard(pendingBackup);
+  restoringBackup = false;
+  for (const control of controls) control.disabled = false;
+  if (!saved) {
+    backupStatus.textContent = 'Ripristino non riuscito. La board corrente è ancora disponibile.';
+    restoreBackupButton.focus();
+    return;
+  }
+
+  board = pendingBackup;
+  history = [];
+  future = [];
+  selected = null;
+  connectFrom = null;
+  viewport.classList.remove('connect-mode');
+  if (quickEditor.matches(':popover-open')) quickEditor.hidePopover();
+  quickTarget = null;
+  backupDialog.close();
+  render();
+  fitView();
+  writeStatus('Board ripristinata.');
+});
+
 for (const id of ['add-node', 'panel-add-node']) {
   get(id).addEventListener('click', (event) => openNewNode(null, null, connectFrom, event.currentTarget));
 }
@@ -1129,7 +1273,7 @@ get('simulation-form').addEventListener('submit', (event) => {
 get('projection-month').addEventListener('change', () => drawProjection(simulateBoard(board, horizon), Number(get('projection-month').value)));
 
 document.addEventListener('keydown', (event) => {
-  if (event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
+  if (backupDialog.open || event.target.matches('input, select, textarea') || quickTarget || nodeDraft) return;
   if (drag?.kind === 'node' && event.key !== 'Escape') return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
     event.preventDefault();

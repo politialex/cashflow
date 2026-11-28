@@ -15,9 +15,11 @@
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <span>Cashflow <span>Studio</span></span>
     </a>
-    <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> Salvato nel browser</span></div>
+    <div class="document-title"><strong>Il mio sistema finanziario</strong><span><i aria-hidden="true"></i> <span id="storage-state" role="status">Caricamento…</span></span></div>
     <div class="header-actions">
+      <button id="toggle-privacy" type="button" aria-pressed="false">Privacy</button>
       <button id="toggle-nodes" type="button" aria-controls="nodes-panel" aria-expanded="false">Nodi</button>
+      <button id="open-backup" type="button" aria-haspopup="dialog" aria-controls="backup">Backup</button>
     </div>
   </header>
 
@@ -70,15 +72,15 @@
         <div class="field"><label for="quick-type">Tipo</label><select id="quick-type" name="type">
           <option value="bank">Conto bancario</option><option value="deposit">Conto deposito</option><option value="investment">Investimento</option><option value="savings">Risparmio</option><option value="cash">Liquidità</option><option value="source">Entrata</option><option value="expense">Spesa</option><option value="other">Altro</option>
         </select></div>
-        <div class="quick-account-field field"><label for="quick-opening">Saldo iniziale (€)</label><input id="quick-opening" name="opening" inputmode="decimal"></div>
-        <div class="field"><label for="quick-flow">Flusso mensile (€)</label><input id="quick-flow" name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
-        <div class="quick-account-field field"><label for="quick-rate">Rendimento annuo (%)</label><input id="quick-rate" name="annualRate" inputmode="decimal"></div>
+        <div class="quick-account-field field"><label for="quick-opening">Saldo iniziale (€)</label><input id="quick-opening" data-private-input name="opening" inputmode="decimal"></div>
+        <div class="field"><label for="quick-flow">Flusso mensile (€)</label><input id="quick-flow" data-private-input name="flow" inputmode="decimal" aria-describedby="quick-flow-help"><p id="quick-flow-help" class="field-help">+ entrata, − uscita</p></div>
+        <div class="quick-account-field field"><label for="quick-rate">Rendimento annuo (%)</label><input id="quick-rate" data-private-input name="annualRate" inputmode="decimal"></div>
         <details class="summary"><summary>Riepilogo del mese 1</summary><div id="quick-node-summary" class="form-summary"></div></details>
       </div>
       <div id="quick-transfer-fields" hidden>
         <p id="quick-transfer-route" class="connection-summary"></p>
         <div class="field"><label for="quick-transfer-mode">Movimento</label><select id="quick-transfer-mode" name="mode"><option value="fixed">Importo fisso</option><option value="percent">Percentuale delle entrate</option></select></div>
-        <div class="field"><label for="quick-transfer-value">Valore</label><input id="quick-transfer-value" name="value" inputmode="decimal"></div>
+        <div class="field"><label for="quick-transfer-value">Valore</label><input id="quick-transfer-value" data-private-input name="value" inputmode="decimal"></div>
         <div class="field"><label for="quick-transfer-frequency">Frequenza</label><select id="quick-transfer-frequency" name="frequency"><option value="monthly">Ogni mese</option><option value="annual">Ogni anno</option><option value="once">Una volta</option></select></div>
       </div>
       <p id="quick-error" role="alert"></p>
@@ -102,6 +104,23 @@
       </div>
     </form>
   </div>
+
+  <dialog id="backup" class="small-dialog" aria-labelledby="backup-heading">
+    <div class="dialog-heading">
+      <h2 id="backup-heading">Backup della board</h2>
+      <button id="close-backup" type="button" aria-label="Chiudi backup">×</button>
+    </div>
+    <div class="editor">
+      <div class="editor-actions"><button id="export-backup" type="button">Scarica backup JSON</button></div>
+      <div class="field">
+        <label for="backup-file">Scegli un file di backup JSON</label>
+        <input id="backup-file" type="file" accept=".json,application/json" aria-describedby="backup-help">
+        <p id="backup-help" class="field-help">Il ripristino sostituisce la board corrente. Scarica prima una copia se vuoi conservarla.</p>
+      </div>
+      <div class="editor-actions"><button id="restore-backup" class="primary-button" type="button" disabled>Ripristina board</button></div>
+      <p id="backup-status" class="field-help" role="status"></p>
+    </div>
+  </dialog>
 
   <dialog id="simulation" class="simulation" aria-labelledby="simulation-heading">
     <div class="dialog-heading"><div><span class="eyebrow">Proiezione</span><h2 id="simulation-heading">Simulazione</h2></div><button id="close-simulation" type="button" aria-label="Chiudi">×</button></div>
